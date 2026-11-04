@@ -144,7 +144,12 @@ function resultView(R, rerender, {checkList} = {}) {
     const sec = Math.round((R.budgetSec ?? S.settings.budgetSec) * 2), states = Math.round((R.maxStates ?? S.settings.maxStates) * 2);
     const addSec = Math.max(10, Math.round(S.settings.budgetSec));   // 続きから足す時間（設定の予算と同じ）
     const resumeOk = R.resumable && canResume();
-    add(h('div.budget', {},
+    // メモリの上限で止まり、試せる段も残っていない：時間を足しても良くならないので、計算し直すボタンは出さず、局面を軽くする方法を案内する
+    const memStop = !R.resumable && /MEMORY_LIMIT/.test(R.resumeReason || '');
+    if (memStop) { add(h('div.budget', {},
+      h('p.hint', {title: R.resumeReason}, 'これ以上計算しても、このブラウザでは答えを良くできません（使えるメモリの上限）。今の答えは、ここまでに見つかった一番よい手順です。'),
+      h('p.hint', '引いた札が決まったら「ここから局面を作る」で計算し直すと、最善の手が分かることがあります。「詳しい条件」でドリンクの上限を入れると、計算が軽くなります。'))); }
+    else add(h('div.budget', {},
       b && b.pNum === 0 ? h('p.warnline', 'この予算の中では、目標点に届く手順がまだ見つかっていません（届かないと決まったわけではありません）。下のボタンで見つかることがあります。')
         : h('p.hint', '時間内に見つけた答えです。もっと良い答えがあるかもしれません。'),
       resumeOk
