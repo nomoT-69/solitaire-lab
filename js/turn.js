@@ -1,0 +1,180 @@
+// ソリティアの画面（毎ターン使う画面）：左に局面（上部の数値の欄、手札、置き場）、右に答え（計算・次の手・プレイの案内）。
+// 札は押して置き場を選ぶ（キー 1:手札 2:保留 3:捨て札 4:除外 0:山札）か、置き場へドラッグする。山札＝デッキ全体−ほかの置き場（自動）。
+import {D, search, itemInputs, staminaTriggered} from './data.js';
+import {firedOf} from './setup.js';
+import {S, save, uid, deck, newPhase, STANCES} from './store.js';
+import {h, pic, cardTile, popover, num, sel, toast} from './ui.js';
+import {ensurePhase, entries, zoneOf, growthOf, extraGrowth, setAssume, ZONES, ZNAME, MAX_DRINKS, growthBulk} from './phase.js';
+import {renderAnswer, isStale} from './answer.js';
+import {renderSteps} from './steps.js';
+
+let showMore = false;
+
+export function renderTurn(root, rerender) {
+  const dk = deck();
+  if (!dk) { root.append(h('section.panel.empty-start', {}, h('h2', 'はじめに'), h('p', 'デッキを作ると、ここでソリティアの局面を入れて計算できます。'),
+    h('button.big.pri', {onclick: () => { S.ui.tab = 'deck'; save(); rerender(); }}, 'デッキを作る →'))); return; }
+  const P = ensurePhase();
+  const p = P.params;
+  const all = entries(dk, P);
+  const touch = () => { save(); rerender(); };
+  const move = (u, z) => {
+    if (z === 'held' && zoneOf(P, u) !== 'held') P.held.push(u);
+    if (z !== 'held') P.held = P.held.filter(x => x !== u);
+    if (z === 'deck') delete P.zones[u]; else P.zones[u] = z;
+    touch();
+  };
+
+  // ---- 札の印と、押したときのメニュー ----
+  const marksFor = en => {
+    const m = [];
+    const g = growthOf(P, en);
+    if (g && g.n < g.lim) m.push(h('button.mark.part', {title: '自己成長（押して変える）', onclick: e => { e.stopPropagation(); setAssume(P, en.uid, 'grown', (g.n + 1) % (g.lim + 1)); touch(); }}, `成長 ${g.n}/${g.lim}`));
+    else if (g) m.push(h('button.mark.full', {title: '自己成長 MAX（押して変える）', onclick: e => { e.stopPropagation(); setAssume(P, en.uid, 'grown', 0); touch(); }}, '成長MAX'));
+    const x = extraGrowth(P, en);
+    if (x.score || x.times) m.push(h('span.mark.grow', [x.score && `+${x.score}`, x.times && `回数+${x.times}`].filter(Boolean).join(' ')));
+    if (P.extra.includes(en)) m.push(h('span.mark.ext', '追加'));
+    return m;
+  };
+  const cardMenu = (e, en) => {
+    const c = D.cardById.get(en.id); const z = zoneOf(P, en.uid);
+    const items = ZONES.map(([k, n, key]) => ({label: n.replace('（自動）', '') + 'へ', key, disabled: k === z, onclick: () => move(en.uid, k)}));
+    const g = growthOf(P, en);
+    if (g) items.push(h('div.pop-c', {}, h('span', '自己成長（受けた回数）'),
+      h('select', {onchange: ev => { setAssume(P, en.uid, 'grown', Number(ev.target.value)); save(); }},
+        Array.from({length: g.lim + 1}, (_, i) => h('option', {value: i, selected: i === g.n}, i === g.lim ? `MAX（${i}/${g.lim}）` : `${i}/${g.lim}（残り ${g.lim - i} 回）`)))));
+    if (c?.type !== 'trouble') {
+      const x = extraGrowth(P, en);
+      const inp = (label, k, v) => h('div.pop-c', {}, h('span', label), h('input', {type: 'number', min: 0, value: v, style: {width: '5em'},
+        onchange: ev => { setAssume(P, en.uid, k, Math.max(0, Number(ev.target.value) || 0)); save(); }}));
+      items.push(h('div.pop-sub', 'ほかの成長（P アイテム・サポートなどで受けた分）'), inp('スコアの成長 +', 'score', x.score), inp('スコアの回数 +', 'times', x.times));
+    }
+    if (P.extra.includes(en)) items.push({label: 'この札を消す（追加した札）', key: 'Delete', cls: 'danger', onclick: () => { P.extra = P.extra.filter(x => x !== en); delete P.zones[en.uid]; P.held = P.held.filter(x => x !== en.uid); touch(); }});
+    popover(e.currentTarget, c?.name + '　いま：' + ZNAME[z].replace('（自動）', ''), items, {onclose: rerender});
+  };
+
+  // ---- 置き場 ----
+  const zoneBox = (k, title, {size = 'small', limit = null, hint = ''} = {}) => {
+    const list = all.filter(e => zoneOf(P, e.uid) === k);
+    if (k === 'held') list.sort((a, b) => P.held.indexOf(a.uid) - P.held.indexOf(b.uid));
+    const over = limit !== null && list.length > limit;
+    const box = h('div.zone', {class: k + (over ? ' over' : ''), 'data-zone': k},
+      h('div.zt', {}, h('b', title), h('span.cnt', {class: over ? 'bad' : ''}, limit !== null ? `${list.length} / ${limit}` : `${list.length}枚`), hint && h('span.hint', hint)),
+      h('div.zc', {}, list.length ? list.map(en => cardTile(en, {draggable: true, size, marks: marksFor(en), onclick: e => cardMenu(e, en)}))
+        : h('span.drop', k === 'hand' ? '山札の札を押して「手札へ」、またはここへドラッグ' : 'ここへドラッグ')));
+    box.addEventListener('dragover', e => { e.preventDefault(); box.classList.add('dragover'); });
+    box.addEventListener('dragleave', () => box.classList.remove('dragover'));
+    box.addEventListener('drop', e => { e.preventDefault(); box.classList.remove('dragover'); const u = e.dataTransfer.getData('text/plain'); if (u) move(u, k); });
+    return box;
+  };
+
+  // ---- 上部の数値の欄（ゲームの画面の上のほうにあるもの）----
+  const setp = k => v => { p[k] = v; touch(); };
+  const stepper = (label, k, {min = 0, max = 99} = {}) => h('div.stepper', {}, h('span.sl', label),
+    h('div.sb', {}, h('button', {disabled: p[k] <= min, onclick: () => { p[k] = Math.max(min, (p[k] || 0) - 1); touch(); }}, '−'),
+      h('b', p[k] ?? 0), h('button', {disabled: p[k] >= max, onclick: () => { p[k] = Math.min(max, (p[k] || 0) + 1); touch(); }}, '＋')));
+  // pct：画面では％で入れ、保存と計算は倍率のまま（例：試験倍率 4426% ⇔ 44.26）
+  // plus：ゲームの表示と同じ「＋何%」（増える分）で入れる（例：熱意倍率 ＋180% ⇔ ×2.8）
+  const toView = (v, {pct, plus}) => v === null || v === undefined ? '' : plus ? +((v - 1) * 100).toFixed(4) : pct ? +(v * 100).toFixed(4) : v;
+  const fromView = (x, {pct, plus}) => x === '' ? null : plus ? 1 + Number(x) / 100 : pct ? Number(x) / 100 : Number(x);
+  const field = (label, k, {step = 1, width = 6, cls = '', pct = false, plus = false} = {}) => h('label.hf', {class: cls}, h('span.sl', label),
+    h('span.unitwrap', {}, plus && h('span.unit', '＋'), h('input', {type: 'number', step, value: toView(p[k], {pct, plus}), style: {width: width + 'em'},
+      onchange: e => setp(k)(fromView(e.target.value, {pct, plus}))}), (pct || plus) && h('span.unit', '%')));
+  const drinkCount = id => P.drinksHeld.filter(x => x === id).length;
+  const hud = h('section.panel.hud', {},
+    h('div.hudrow', {},
+      h('div.stances', {}, h('span.sl', '指針'), h('div.seg', {}, STANCES.map(([v, t]) => h('button', {class: 'st ' + v + (p.stance === v ? ' on' : ''), onclick: () => setp('stance')(v)}, t)))),
+      stepper('行動回数', 'cardUses', {min: 1, max: 20}),
+      field('目標点', 'target', {width: 9, cls: 'big'})),
+    h('div.hudrow', {},
+      field('熱意', 'enthusiasm'), field('熱意追加', 'enthusiasmBonus'), field('熱意倍率', 'enthusiasmBuff', {step: 10, plus: true}), field('試験倍率', 'trial', {step: 1, pct: true}),
+      h('div.drinks', {}, h('span.sl', `ドリンク ${P.drinksHeld.length}/${MAX_DRINKS}`),
+        dk.drinks.length ? h('div.dchips', dk.drinks.map(id => { const d = D.drinks.find(x => x.id === id); const n = drinkCount(id);
+          return h('span.dchip', {class: n ? 'on' : '', title: d?.name},
+            pic('drinks', id, d?.name || '?', 28), h('span.dn', d?.name),
+            h('button', {disabled: !n, onclick: () => { P.drinksHeld.splice(P.drinksHeld.indexOf(id), 1); touch(); }}, '−'), h('b', n),
+            h('button', {disabled: P.drinksHeld.length >= MAX_DRINKS, title: P.drinksHeld.length >= MAX_DRINKS ? `持てるのは${MAX_DRINKS}本まで` : '', onclick: () => { P.drinksHeld.push(id); touch(); }}, '＋')); }))
+          : h('span.hint', 'デッキにドリンクがありません'))),
+    itemBox(),
+    h('button.more', {onclick: () => { showMore = !showMore; rerender(); }}, (showMore ? '▾' : '▸') + ' 詳しい条件（直前の指針・回数・継続効果・成長・前の局面）'),
+    showMore && moreBox());
+
+  // P アイテムの入力欄：デッキの P アイテムのうち、入力の要るもの（発動済みの回数・カウンタ。エンジンの pItemInputs）と、試作・未対応の注記があるものだけ出す
+  function itemBox() {
+    let perUse = false;
+    const rows = dk.items.map(id => {
+      const it = D.items.find(x => x.id === id), inf = itemInputs(id);
+      const st = (P.itemState[id] ||= {counter: 0, fired: []});
+      const slots = inf ? inf.inputs.filter(x => x.key === 'fired') : it?.limit ? [{key: 'fired', max: it.limit}] : [];
+      const hasCounter = inf ? inf.inputs.some(x => x.key === 'counter') : !!it?.counter;
+      if (!slots.length && !hasCounter && !inf?.note && inf?.supported !== false) return null;
+      if (slots.some(x => x.enthusiasmBuffPerUse)) perUse = true;
+      const setFired = (i, v) => { st.fired = slots.map((y, j) => j === i ? Math.max(0, Math.min(y.max, v ?? 0)) : firedOf(st, j, y.max)); delete st.remaining; touch(); };
+      return h('div.itemrow', {}, pic('items', id, it?.name || '?', 32), h('span.inm', it?.name),
+        slots.map((x, i) => num(slots.length > 1 ? `発動済みの回数（${i + 1}）` : '発動済みの回数', firedOf(st, i, x.max), v => setFired(i, v), {min: 0, max: x.max, width: 4, hint: '/' + x.max})),
+        hasCounter && num('カウンタ', st.counter, v => { st.counter = v ?? 0; touch(); }, {min: 0, width: 4}),
+        inf?.note && h('small.unsup', {title: inf.note}, '試作・未検証'),
+        inf && !inf.supported && h('small.unsup', '計算は未対応：' + (inf.problems[0] || '')));
+    }).filter(Boolean);
+    // ソリティアの前に使って、効果が残る札（奇跡を起こした一番星）：デッキにあるときだけ。使ったら、効果が働いた回数を入れる
+    const pre = [...new Set(all.map(en => en.id))].map(id => D.cardById.get(id)).filter(c => c?.registers?.limit).map(c => {
+      const r = P.registered.find(x => x.card === c.id), lim = c.registers.limit;
+      return h('div.itemrow', {}, pic('cards', c.id, c.name, 32), h('span.inm', c.name),
+        h('label.f', {}, h('input', {type: 'checkbox', checked: !!r, onchange: e => { if (e.target.checked) P.registered.push({card: c.id, counter: 0, used: 0}); else P.registered = P.registered.filter(x => x.card !== c.id); touch(); }}), 'ソリティアの前に使った'),
+        r && num('日が差す方へで効果が働いた回数', r.used || 0, v => { r.used = Math.max(0, Math.min(lim, v ?? 0)); touch(); }, {min: 0, max: lim, width: 4, hint: '/' + lim}),
+        h('small.unsup', {title: '日が差す方へを使うとき、消費体力を0にする効果（レッスン全体で' + lim + '回）'}, '試作・未検証'));
+    });
+    rows.push(...pre);
+    const stamina = dk.items.some(staminaTriggered);
+    if (!rows.length && !stamina) return null;
+    return h('div.items', {}, h('h4', pre.length ? 'P アイテム・使った札の効果' : 'P アイテム'), rows,
+      stamina && h('div.hudrow', {}, field('コストを0にする残り回数', 'nullifyCostCards'),
+        h('span.hint', 'ソリティアを始める前に全身全霊+ などを使ったときの、コスト（体力を含む）が0になる残りの回数。残りがある間は、体力が減ったときの効果が発動しません。')),
+      perUse && h('p.hint', '熱意倍率の欄には、ゲームの表示の値（発動済みの分の熱意倍率を含む）を入れてください。'));
+  }
+
+  function moreBox() {
+    const hist = S.history.filter(x => x.deckId === dk.id);
+    return h('div.more', {},
+      h('div.hudrow', {},
+        h('label.hf', {}, h('span.sl', '直前の指針'), h('select', {onchange: e => setp('prevStance')(e.target.value)}, [['none', 'なし'], ...STANCES].map(([v, t]) => h('option', {value: v, selected: p.prevStance === v}, t)))),
+        field('スコア上昇', 'scoreBuff', {step: 5, pct: true}), field('残りターン', 'turnsRemaining'), field('ドリンクの上限', 'drinkCap'), field('ゲームの山札', 'gameDeckCount')),
+      h('div.hudrow', {}, field('温存の回数', 'preservationTimes'), field('強気の回数', 'strengthTimes'), field('のんびりの回数', 'leisureTimes'), field('札の効果での指針変更', 'directStanceTimes')),
+      h('p.hint', 'ドリンクの上限：このソリティアで使ってよい本数（空＝上限なし）。ゲームの山札：入れると、振り分けた山札の枚数と照らし合わせます。'),
+      h('h4', '継続効果（使った札が残す効果）'),
+      P.registered.map((r, i) => !D.cardById.get(r.card)?.registers?.limit && h('div.itemrow', {}, pic('cards', r.card, D.cardById.get(r.card)?.name || '?', 32), h('span.inm', D.cardById.get(r.card)?.name),
+        num('カウンタ', r.counter, v => { r.counter = v ?? 0; touch(); }, {min: 0, width: 4, hint: '4なら次の札で発動'}),
+        h('button.x', {onclick: () => { P.registered.splice(i, 1); touch(); }}, '×'))),
+      h('div.row', {}, D.cards.filter(c => c.registers?.counter).map(c => h('button.mini', {onclick: () => { P.registered.push({card: c.id, counter: 0}); touch(); }}, '＋ ' + c.name))),
+      growthBulk(P, all, touch),
+      h('h4', '局面の出し入れ'),
+      h('div.row', {},
+        hist.length ? sel('', '', [['', '前の局面から始める…'], ...hist.map((x, i) => [i, `${new Date(x.at).toLocaleString('ja-JP', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'})}　${x.label}`])],
+          v => { if (v === '') return; S.phase = structuredClone(hist[Number(v)].phase); toast('前の局面を読み込みました'); touch(); }) : h('span.hint', '計算した局面は「前の局面」として残ります。'),
+        h('button.danger', {onclick: () => { if (confirm('置き場と数値を最初の状態に戻しますか？')) { S.phase = newPhase(dk.id); touch(); } }}, '局面を最初から')));
+  }
+
+  // デッキにない札を足す（眠気など）
+  let addQ = '';
+  const resList = () => search(D.cards, addQ || '眠気', 8).map(c => h('button.mini', {onclick: () => { const en = {uid: uid(), id: c.id, c11n: {}, hif: false}; P.extra.push(en); P.zones[en.uid] = 'hand'; toast(c.name + ' を手札に足しました'); touch(); }}, c.name));
+  const resBox = h('div.row', {}, resList());
+  const addBox = h('details.addextra', {}, h('summary', '＋ デッキにない札を足す（眠気など）'),
+    h('input', {type: 'search', placeholder: '名前・略称', oninput: e => { addQ = e.target.value; resBox.replaceChildren(...resList()); }}), resBox);
+
+  const carry = P.carry && h('div.carry', {},
+    h('div.row', {}, h('b', P.carry.mid ? 'プレイの途中から作った局面です' : '前のターンの続きから作った局面です'), h('button.mini', {onclick: () => { delete P.carry; touch(); }}, '閉じる')),
+    h('ul', {}, P.carry.warns.map(w => h('li.warn', w)), P.carry.notes.map(n => h('li', n))));
+
+  const left = h('div.turnleft', {}, carry, hud,
+    h('section.panel.board', {},
+      h('div.handrow', {}, zoneBox('hand', '手札', {size: 'large', limit: 5}), zoneBox('held', '保留', {size: 'small', limit: 2})),
+      zoneBox('deck', '山札', {hint: '＝デッキ全体 − ほかの置き場（自動）。札を押して「手札へ」'}),
+      h('div.pilerow', {}, zoneBox('discard', '捨て札'), zoneBox('removed', '除外')),
+      addBox,
+      h('p.hint', '札を押すと置き場を選べます（キー 1:手札 2:保留 3:捨て札 4:除外 0:山札）。ドラッグでも動かせます。')));
+  const right = h('aside.answer', {});
+  renderAnswer(right, rerender);
+  root.append(h('div.turn', {}, left, right));
+  // 全手順（詳細）：横幅いっぱいに、画面の下へ
+  if (S.ui.steps && S.result?.tree && !isStale()) { const box = h('div#steps'); renderSteps(box, rerender); root.append(box); }
+}

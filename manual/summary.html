@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solitaire Lab 概要</title>
+<style>
+  /* Solitaire Lab の使い方（スライド）。← → キー・画面の左右・下のボタンでめくる。印刷すると1ページに1枚。サーバーなしでも開ける */
+  :root { --bg: #e9ebf0; --panel: #fff; --ink: #1b1f2a; --sub: #4c5466; --line: #dfe2ea; --acc: #d6336c; --acc2: #fde8ef;
+    --str: #e5484d; --pres: #3b7ddd; --leis: #2f9e6b; --ok: #18794e; --okbg: #e1f5ea; --warn: #9a5b00; --warnbg: #fff2d4; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #101217; --panel: #1e212a; --ink: #eceef3; --sub: #b4bac8; --line: #323644; --acc: #ff6b9a; --acc2: #44203a; --okbg: #163a28; --warnbg: #3d300f; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif; }
+  .deck { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .slide { display: none; width: 1280px; height: 720px; background: var(--panel); border-radius: 14px; box-shadow: 0 6px 30px rgba(0,0,0,.15);
+    padding: 44px 56px 40px; position: relative; overflow: hidden; transform-origin: center center; flex-direction: column; }
+  .slide.on { display: flex; }
+  .slide h1 { font-size: 46px; margin: 0 0 8px; letter-spacing: .02em; }
+  .slide h2 { font-size: 30px; margin: 0 0 18px; padding-bottom: 10px; border-bottom: 3px solid var(--acc); display: flex; align-items: baseline; gap: 14px; }
+  .slide h2 .no { font-size: 16px; color: var(--acc); font-weight: 800; }
+  .body { flex: 1; display: flex; gap: 32px; min-height: 0; }
+  .txt { flex: 0 0 420px; font-size: 18px; }
+  .txt.wide { flex: 1; }
+  .txt ol, .txt ul { margin: 0; padding-left: 1.3em; } .txt li { margin: 6px 0; }
+  .txt b { color: var(--acc); }
+  .pic { flex: 1; min-width: 0; display: flex; align-items: flex-start; justify-content: center; }
+  .pic img { max-width: 100%; max-height: 560px; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.08); object-fit: contain; }
+  .col { flex-direction: column; } .col .pic img { max-height: 470px; }
+  .pic.three { gap: 14px; align-items: flex-start; } .pic.three figure { margin: 0; flex: 1; text-align: center; } .pic.three img { max-height: 330px; max-width: 100%; } .pic.three figcaption { font-weight: 700; color: var(--acc); margin-top: 4px; }
+  .tip { background: var(--acc2); border-radius: 8px; padding: 8px 12px; margin-top: 12px; font-size: 15px; }
+  .warn { background: var(--warnbg); color: var(--warn); border-radius: 8px; padding: 8px 12px; margin-top: 12px; font-size: 15px; }
+  kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 6px; font-size: 14px; background: var(--bg); }
+  table { border-collapse: collapse; font-size: 16px; width: 100%; } td, th { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; } th { color: var(--sub); white-space: nowrap; }
+  .chip { display: inline-block; border-radius: 6px; padding: 0 8px; color: #fff; font-weight: 700; font-size: 14px; }
+  .s1 { background: var(--str); } .s2 { background: var(--pres); } .s3 { background: var(--leis); }
+  .cover { justify-content: center; background: linear-gradient(135deg, var(--panel) 55%, var(--acc2)); }
+  .cover .sub { font-size: 22px; color: var(--sub); }
+  .cover .ver { margin-top: 40px; color: var(--sub); }
+  .toc { columns: 2; font-size: 18px; } .toc a { color: var(--ink); text-decoration: none; } .toc a:hover { color: var(--acc); }
+  .foot { position: absolute; bottom: 14px; right: 24px; font-size: 13px; color: var(--sub); }
+  .nav { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; background: var(--panel); border-radius: 22px; padding: 4px 8px; box-shadow: 0 2px 10px rgba(0,0,0,.15); z-index: 5; }
+  .nav button { border: none; background: none; font: inherit; color: var(--ink); padding: 4px 12px; border-radius: 16px; cursor: pointer; }
+  .nav button:hover { background: var(--acc2); }
+  #count { font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: center; }
+  @media print { .nav { display: none; } .deck { position: static; display: block; } .slide { display: flex !important; transform: none !important; box-shadow: none; page-break-after: always; margin: 0 auto; }
+    @page { size: 1280px 720px; margin: 0; } html, body { background: #fff; } }
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+<section class="slide cover">
+  <h1>Solitaire Lab</h1>
+  <div class="sub">学園アイドルマスターの「ソリティア」で、<br>どの順番で札を使えば目標点に届きやすいかを教えてくれるツールです。</div>
+  <div class="ver">概要（6ページ） ・ 版 1.2.2 ・ くわしい使い方は「詳細マニュアル」をご覧ください</div>
+</section>
+
+<section class="slide">
+  <h2><span class="no">1</span>このツールでできること</h2>
+  <div class="body"><div class="txt">
+    <ul>
+      <li>ゲームの画面と同じように手札や山札を入れると、<b>次に使う札</b>を教えてくれます。</li>
+      <li>目標点に届く確率と、使うドリンクの本数の目安も表示します。</li>
+      <li>札を使ったあとは、引いた札を選ぶだけで、続けて次の手を案内します。</li>
+      <li>すべての手順を一覧表で確認することもできます。</li>
+      <li>インストールは不要です。データはお使いの PC の中だけで扱います。</li>
+    </ul>
+  </div><div class="pic"><img src="img/09-answer.webp" alt="計算結果の画面"></div></div>
+</section>
+
+<section class="slide">
+  <h2><span class="no">2</span>使い方（3ステップ）</h2>
+  <div class="body col"><div class="txt wide">
+    <table>
+      <tr><th>① デッキを登録</th><td>自分のデッキの札・ドリンク・P アイテムを登録します。札は名前の一部や略称（エンテイ、ドル宣など）で探せます。</td></tr>
+      <tr><th>② 局面を入力</th><td>ゲームの画面を見ながら、指針・行動回数・目標点などを入れ、札を手札や捨て札に振り分けます。</td></tr>
+      <tr><th>③ 計算して進める</th><td>「計算する」を押すと次の手が出ます。ゲームで札を使ったら「使った」を押し、引いた札を選びます。</td></tr>
+    </table>
+  </div><div class="pic three">
+    <figure><img src="img/01-deck.webp" alt="デッキ"><figcaption>① デッキを登録</figcaption></figure>
+    <figure><img src="img/07-turn-input.webp" alt="局面"><figcaption>② 局面を入力</figcaption></figure>
+    <figure><img src="img/11-draw.webp" alt="プレイ"><figcaption>③ 計算して進める</figcaption></figure>
+  </div></div>
+</section>
+
+<section class="slide">
+  <h2><span class="no">3</span>便利な機能</h2>
+  <div class="body"><div class="txt">
+    <ul>
+      <li><b>全手順の一覧表</b>：引いた札ごとに、スコアや熱意がどう増えるかを表で確認できます。Excel などで開けるファイルにも保存できます。</li>
+      <li><b>夏夜の火力</b>：夏夜に咲く思い出の効果で入った点を表示します。</li>
+      <li><b>途中から計算</b>：全身全霊などで札を引いたあとから計算し直すと、計算が速くなります。</li>
+      <li><b>計算の続き</b>：時間内に終わらなかった計算を、続きから再開できます。</li>
+      <li><b>次のターンへ</b>：ターンの終わりの状態から、次のターンの入力を作れます。</li>
+    </ul>
+  </div><div class="pic"><img src="img/13-steps.webp" alt="手順の一覧表"></div></div>
+</section>
+
+<section class="slide">
+  <h2><span class="no">4</span>はじめかた</h2>
+  <div class="body"><div class="txt wide">
+    <ol>
+      <li>受け取った <b>SolitaireLab-v○○.zip</b> を右クリックし、「すべて展開」を選びます。</li>
+      <li>できたフォルダの中の <b>Start-SolitaireLab-Windows.bat</b> をダブルクリックします。<br>（Mac の場合は Start-SolitaireLab-Mac.command）</li>
+      <li>ブラウザが開いて、Solitaire Lab の画面が表示されます。</li>
+    </ol>
+    <div class="tip">ヒント：一緒に開く黒い画面は、使っている間は閉じないでください。閉じると Solitaire Lab も終了します。</div>
+    <div class="tip">ヒント：「Windows によって PC が保護されました」と表示されたら、「詳細情報」→「実行」を押してください。</div>
+  </div></div>
+</section>
+
+<section class="slide">
+  <h2><span class="no">5</span>ご利用にあたって</h2>
+  <div class="body"><div class="txt wide">
+    <ul>
+      <li>このツールは、ファンが個人で作った非公式のものです。ゲームの運営とは関係ありません。営利目的ではありません。</li>
+      <li>計算するのは、ソリティアを行う1ターンの中だけです。体力・元気・全力は計算に入れていません。</li>
+      <li>札の効果は、公開されているデータをもとにしています。一部の札は、実際のゲームと違う動きをする可能性があります。</li>
+      <li>札などのデータは gakumas-tools を利用しています。画像の権利はゲームの権利者にあります。</li>
+    </ul>
+    <div class="tip">くわしい操作方法は、フォルダの中の <b>Manual.html</b>（詳細マニュアル）をご覧ください。</div>
+  </div></div>
+</section>
+
+</div>
+<div class="nav"><button id="prev" title="前へ（←）">◀ 前へ</button><span id="count"></span><button id="next" title="次へ（→）">次へ ▶</button><button id="tocb" title="はじめへ">はじめ</button></div>
+<script>
+  const slides = [...document.querySelectorAll('.slide')];
+  slides.forEach((s, i) => { if (!s.querySelector('.foot')) s.insertAdjacentHTML('beforeend', `<div class="foot">Solitaire Lab 概要 ・ ${i + 1} / ${slides.length}</div>`); });
+  let cur = Math.min(slides.length, Math.max(1, Number(location.hash.slice(1)) || 1)) - 1;
+  const fit = () => { const k = Math.min(innerWidth / 1320, (innerHeight - 56) / 760); slides.forEach(s => s.style.transform = `scale(${Math.min(k, 1.6)})`); };
+  const show = i => { cur = Math.max(0, Math.min(slides.length - 1, i)); slides.forEach((s, j) => s.classList.toggle('on', j === cur));
+    document.getElementById('count').textContent = `${cur + 1} / ${slides.length}`; history.replaceState(null, '', '#' + (cur + 1)); };
+  document.getElementById('prev').onclick = () => show(cur - 1);
+  document.getElementById('next').onclick = () => show(cur + 1);
+  document.getElementById('tocb').onclick = () => show(0);
+  addEventListener('keydown', e => { if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { show(cur + 1); e.preventDefault(); } if (['ArrowLeft', 'PageUp'].includes(e.key)) { show(cur - 1); e.preventDefault(); } if (e.key === 'Home') show(0); if (e.key === 'End') show(slides.length - 1); });
+  document.getElementById('deck').addEventListener('click', e => { if (e.target.closest('a,button,img')) return; e.clientX > innerWidth / 2 ? show(cur + 1) : show(cur - 1); });
+  document.querySelectorAll('.toc a').forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); show(Number(a.getAttribute('href').slice(1)) - 1); });
+  addEventListener('hashchange', () => show((Number(location.hash.slice(1)) || 1) - 1));
+  addEventListener('resize', fit); fit(); show(cur);
+</script>
+</body>
+</html>
