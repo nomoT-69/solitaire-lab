@@ -240,7 +240,7 @@ function keepForFollow(job, r, key, model, dk) {
 }
 
 // 打ち切りの理由（エンジンの trials の reason）
-const REASON = {MEMORY_LIMIT: 'メモリの上限', TIME_LIMIT: '時間切れ', STATE_LIMIT: '状態数の上限'};
+const REASON = {MEMORY_LIMIT: 'メモリの上限', GROWTH_LIMIT: 'メモリに入りきらない見込み', TIME_LIMIT: '時間切れ', STATE_LIMIT: '状態数の上限'};
 
 const fmtBest = b => b && ({p: b.p, d: b.d, a: b.a, pNum: b.pNum, dNum: b.dNum, aNum: b.aNum, pText: pct(b.pNum), ev: b.ev ?? null, floor: b.floor ?? null});
 

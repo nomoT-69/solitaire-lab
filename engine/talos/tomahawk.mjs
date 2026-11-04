@@ -33,12 +33,8 @@ export function tecnaiModel(data,setup,target,options={}){
     choices:s=>{const cs=E.choices(s).map(a=>({...a,raw:a}));if(co)sortActs(E,cs);return cs;},
     branches(s,a){let bs=E.transition(s,a.raw??a).branches;if(co)bs=sortBranches(E,bs);return bs.map((b,index)=>({p:rat(b.p),pFloat:b.p[0]/b.p[1],s:b.s,index}));}};
 }
-// 層の上限で残す状態の順（G2 の手順3。DESIGN 22.3〜22.4）：根からの得点＋λ×（残りの行動＋1）×（この先の熱意の目安）×em×（1＋スコア上昇）×試験倍率。
-// この先の熱意の目安＝熱意＋温存（指針なし）から変わると入る熱意（温存5・温存2は8・指針なし10、熱意追加と熱意倍率つき）＋μ×（残りの行動＋1）×熱意追加×熱意倍率/100。
-// 正しい上限ではない（残す順だけに使うので、値は厳密なまま）。Tecnai の状態の形でなければ undefined（今の順）
-export function heatCapScore(model,lambda=8,mu=1){const E=model.engine;if(!E||!E.cfg||!E.root||typeof E.root.heat!=='number')return undefined;const t=E.cfg.trial??1;
-  const pend=s=>(s.st===0||s.st===1||s.st===2)?((s.st===1?8:s.st===0?5:10)+s.extra)*s.factor/100:0;
-  return (s,pg)=>pg+lambda*(s.uses+1)*(s.heat+pend(s)+mu*(s.uses+1)*s.extra*s.factor/100)*(s.em??1)*(1+s.bonus/100)*t;}
+// 層の上限で残す状態の順の見込み（heatCapScore）は talos/estimate.mjs へ移した。前の呼び方のため、ここからも出す（2026-11-04）
+export {heatCapScore} from './estimate.mjs';
 export const sortActs=(E,cs)=>{const k=new Map(cs.map(a=>[a,E.canonAct(a.raw??a)]));return cs.sort((x,y)=>k.get(x)<k.get(y)?-1:k.get(x)>k.get(y)?1:0);};
 export const sortBranches=(E,bs)=>{const k=bs.map(b=>({b,c:E.canon(b.s)}));k.sort((x,y)=>x.c<y.c?-1:x.c>y.c?1:0);return k.map(x=>{x.b.canon=x.c;return x.b;});};
 
@@ -302,6 +298,9 @@ export function solveTomahawk(model,opts){
           }
         }
         fw.layer=next;fw.layerFirst=fw.nextFirst;fw.ids=null;fw.next=null;fw.hp=null;fw.sc=null;
+        // opts.growthLimit（G2 2026-11-05、利用者の決定。案 A）：層を作り終えたとき「ここまでの状態数 ＋ 今の層の状態数 × 伸び（今の層 ÷ 前の層）」が上限を超えたら、
+        // 入りきらない見込みとして早めに止める（GROWTH_LIMIT）。層の上限つきの探索では使わない。ランダム42局面で、解き切れる局面を止める誤り 0件（DESIGN 22.23）
+        if(opts.growthLimit&&!layerCap&&layer.length){const L=next.length;if(nodeK.n+L*(L/layer.length)>opts.growthLimit)throw Error('GROWTH_LIMIT');}
         // 暫定の答え用（layerCap）：層の状態が上限を超えたら、その時点までの得点（根からの最大）が高い状態だけを展開する。
         // 展開しない状態は「そこで止める」扱いになるので、得られる方策は実際に打てる手順（値は厳密。最適は未証明）
         const lay=fw.layer,lf=fw.layerFirst;
@@ -344,7 +343,7 @@ export function solveTomahawk(model,opts){
       // 同じグラフで P だけの最大を後ろ向きに計算する。本当の値はそれ以下なので、どの方策の達成率もこの値を超えない（2026-11-04）
       if(dropped&&opts.upperBound===true){try{pUB=upperP(N);}catch(e){if(e.message!=='TIME_LIMIT')throw e;pUB=null;ubNote='時間切れで上限を計算できなかった';}}
     }
-  }catch(e){if(!['TIME_LIMIT','STATE_LIMIT','FRONTIER_LIMIT','MEMORY_LIMIT'].includes(e.message))throw e;status='incomplete';reason=e.message;}
+  }catch(e){if(!['TIME_LIMIT','STATE_LIMIT','FRONTIER_LIMIT','MEMORY_LIMIT','GROWTH_LIMIT'].includes(e.message))throw e;status='incomplete';reason=e.message;}
   if(R0){R0.segsOwn=segsOwn;R0.transitions=transitions;R0.invarianceChecks=invarianceChecks;R0.horizonCut=horizonCut;R0.maxLayer=maxLayer;R0.dropped=dropped;if(ranForward)R0.forwardMs=(R0.forwardMs||0)+(forwardMs||Date.now()-started);R0.calls=(R0.calls||0)+1;}
   function at(curve,n){
     if(n<=0)return GOAL;if(n<curve[0].from)throw Error('CURVE_RANGE');
@@ -443,7 +442,7 @@ export function solveTomahawk(model,opts){
   const scopeOf=()=>horizonCut===0?'上限なしでも最適（操作数の上限 '+maxOps+' で切った状態は0件）':'操作数の上限 '+maxOps+' の範囲での最適（上限で切った状態 '+horizonCut+' 件）';
   if(!root)return {status,reason,stats,kind:'incomplete',kindLabel:'未完了'};
   if(dropped){stats.dropped=dropped;}
-  if(opts.exposeGraph&&maxGain)stats.graph={N:nodeK.n,minNeed:minNeed.a,maxGain,actStart:actStart.a,brStart:brStart.a,brChild:brChild.a,brGain:brGain.a,brProb:brProb.a,actFlag:actFlag.a,nodeK:nodeK.a,curves};   // 調べる用（測定のみ。curves は G2 の案 A の測定で足した）
+  if(opts.exposeGraph&&maxGain)stats.graph={N:nodeK.n,minNeed:minNeed.a,maxGain,actStart:actStart.a,brStart:brStart.a,brChild:brChild.a,brGain:brGain.a,brProb:brProb.a,actFlag:actFlag.a,nodeK:nodeK.a,curves,probs};   // 調べる用（測定のみ。curves は G2 の案 A の測定で足した）
   const alpha0=alpha;
   return resultAt(model.root,0,root,[]);
   // 結果を作る（根の局面、または follow でたどった続きの局面 rootS・グラフの番号 rootI・その局面の前線 root）
