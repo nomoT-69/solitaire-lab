@@ -58,7 +58,7 @@ export function renderTurn(root, rerender) {
     const list = all.filter(e => zoneOf(P, e.uid) === k);
     if (k === 'held') list.sort((a, b) => P.held.indexOf(a.uid) - P.held.indexOf(b.uid));
     const over = limit !== null && list.length > limit;
-    const box = h('div.zone', {class: k + (over ? ' over' : ''), 'data-zone': k},
+    const box = h('div.zone', {class: k + (over ? ' over' : '') + (!list.length && k !== 'hand' && k !== 'held' ? ' empty' : ''), 'data-zone': k},
       h('div.zt', {}, h('b', title), h('span.cnt', {class: over ? 'bad' : ''}, limit !== null ? `${list.length} / ${limit}` : `${list.length}枚`), hint && h('span.hint', hint)),
       h('div.zc', {}, list.length ? list.map(en => cardTile(en, {draggable: true, size, marks: marksFor(en), onclick: e => cardMenu(e, en)}))
         : h('span.drop', k === 'hand' ? '山札の札を押して「手札へ」、またはここへドラッグ' : 'ここへドラッグ')));
@@ -114,6 +114,7 @@ export function renderTurn(root, rerender) {
         slots.map((x, i) => num(slots.length > 1 ? `発動済みの回数（${i + 1}）` : '発動済みの回数', firedOf(st, i, x.max), v => setFired(i, v), {min: 0, max: x.max, width: 4, hint: '/' + x.max})),
         hasCounter && num('カウンタ', st.counter, v => { st.counter = v ?? 0; touch(); }, {min: 0, width: 4}),
         inf?.note && h('small.unsup', {title: inf.note}, '試作・未検証'),
+        slots.some(x => x.enthusiasmBuffPerUse) && firedOf(st, 0, slots[0].max) > 0 && h('small.hint', `発動した分（＋${Math.round(slots.reduce((a, x, i) => a + (x.enthusiasmBuffPerUse || 0) * firedOf(st, i, x.max), 0) * 100)}%）は、ゲームの熱意倍率の表示に入っています。計算では足しません`),
         inf && !inf.supported && h('small.unsup', '計算は未対応：' + (inf.problems[0] || '')));
     }).filter(Boolean);
     // ソリティアの前に使って、効果が残る札（奇跡を起こした一番星）：デッキにあるときだけ。使ったら、効果が働いた回数を入れる

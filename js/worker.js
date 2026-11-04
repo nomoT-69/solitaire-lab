@@ -38,6 +38,8 @@ const dropJob = () => { try { J?.job?.dispose?.(); } catch {} try { if (F && F.j
 const MAX_HEAP_MIB = 3000;   // 使ってよいメモリ（エンジンの maxHeapMiB）。エンジンが Node.js の memoryUsage で測るので、ブラウザでは効かない（測れない）
 // 層の上限の段（エンジンの既定は 2万・10万・30万）。ブラウザではメモリを測れないので、30万の段を外す（最大 RSS 約4.3GB → 約1.7GB。計算の部品のセッションの測定・勧め）
 const CAPS = [20000, 100000];
+// 見積もったメモリの上限（エンジンの maxEstMiB。ブラウザでも効く）。ブラウザの上限 4GB の6割ほど（計算の部品のセッションの勧め）。今の層の上限の段ではほとんど届かない、念のための上限
+const MAX_EST_MIB = 2400;
 const dataKey = m => JSON.stringify([m.calcSettings || null, m.csv.skillCards.length]);
 const followKey = (m, o) => JSON.stringify([m.calcSettings || null, m.csv.skillCards.length, o.criterion, o.order, o.extras]);
 const critOf = o => o.criterion === 'max' ? {criterion: 'max'} : {alpha: ALPHA[o.criterion]};
@@ -182,7 +184,7 @@ self.onmessage = e => {
     post('progress', {stage: '局面を作成中', ms: Date.now() - t0});
     const model = T.tecnaiModel(data, m.setup, m.target);
     const o = m.opts;
-    const base = {order: o.order.split(''), extras: o.extras, maxMs: o.maxMs, maxStates: o.maxStates, maxHeapMiB: MAX_HEAP_MIB, caps: CAPS};
+    const base = {order: o.order.split(''), extras: o.extras, maxMs: o.maxMs, maxStates: o.maxStates, maxHeapMiB: MAX_HEAP_MIB, maxEstMiB: 'maxEstMiB' in o ? o.maxEstMiB : MAX_EST_MIB, caps: o.caps || CAPS};   // caps・maxEstMiB は試験用に opts で上書きできる（画面からは渡さない）
     let fr = null;
     try { fr = tryFollow(m, model, o); } catch { fr = null; }
     if (fr) {
@@ -244,8 +246,8 @@ function actLabel(model, a) {
   if (!a) return '止める（何もしない）';
   const E = model.engine;
   const sel = a.select ? `（${E.types[a.select.ty]?.card.name ?? '札'} を${{hand: '手札', deck: '山札', discard: '捨て札'}[a.select.from] || ''}から選ぶ）` : '';
-  if (a.type === 'card') return `${a.name} を使う${sel}`;
-  if (a.type === 'drink') return `${a.name} を飲む${sel}`;
+  if (a.type === 'card') return `${a.name}${sel}`;   // 札・ドリンクは名前だけ（利用者の決定。「を使う」「を飲む」は付けない）
+  if (a.type === 'drink') return `${a.name}${sel}`;
   if (a.type === 'endTurn') return 'ターン終了';
   return a.name || a.type;
 }

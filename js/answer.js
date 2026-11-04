@@ -13,7 +13,7 @@ import {copyReport} from './report.js';
 const EXTRA_NAME = {ev: '期待最終点', floor: '最低最終点'};
 const num3 = x => x === null || x === undefined ? '—' : (Math.round(x * 1000) / 1000).toLocaleString('ja-JP');
 const pct = x => (Math.round(x * 10000) / 100) + '%';
-const drawnText = d => d.length ? '来た札：' + d.map(x => x.name).join('・') : '（新しく来た札なし）';
+const drawnText = d => d.length ? 'ドロー札：' + d.map(x => x.name).join('・') : '（ドロー札なし）';
 let detailsOpen = false, making = false, makeErr = null, timer = null;
 // 計算する（over：この1回だけの予算）。計算した局面は「前の局面」に残す
 function recompute(over = {}, opt = {}) {
@@ -44,8 +44,13 @@ export function renderAnswer(root, rerender) {
   const stale = isStale();
   const compute = () => recompute();
   const checkList = v.length ? h('ul.vlist.compact', v.map(([k, m]) => h('li', {class: k}, {err: '✖ ', warn: '⚠ ', info: 'ℹ '}[k], m))) : null;
-  const computeBtn = h('button.big.pri.wide', {disabled: errs.length > 0 || running, onclick: compute},
+  // 計算のボタンは、答えの欄の一番上に、いつも同じ場所で出す。目立つ（塗りつぶしの）ボタンは画面に1つ：答えがまだない・古いときは「計算する」、
+  // 答えが出ているときは「使った →」を塗りつぶしにし、「計算し直す」は枠だけのボタンにする
+  const fresh = S.result && !stale;
+  const computeBtn = h('button.big.wide', {class: fresh ? 'sec' : 'pri', disabled: errs.length > 0 || running, onclick: compute},
     running ? '計算中…' : errs.length ? `直すところが ${errs.length} 件あります` : S.result ? '計算し直す' : '計算する');
+  const computeBox = h('section.panel.ans.computebox', {}, stale && h('div.stale', '局面を変えました。下の答えは前の局面のものです。'),
+    v.some(x => x[0] !== 'info') || !fresh ? (checkList || h('p.ok.compact', '✔ 入力に問題は見つかりません')) : null, computeBtn);
 
   // 計算中
   if (running) {
@@ -65,14 +70,12 @@ export function renderAnswer(root, rerender) {
   if (RUN.status === 'canceled' && !S.result) root.append(h('section.panel.ans.warnbar', {}, '中止しました。'));
 
   // 答えがない、または局面を変えた
+  root.append(computeBox);
   if (!S.result || stale) {
-    root.append(h('section.panel.ans', {},
-      stale && h('div.stale', '局面を変えました。下の答えは前の局面のものです。'),
-      h('h2', '入力の確かめ'), checkList || h('p.ok', '✔ 問題は見つかりません'), computeBtn));
     if (S.result && stale) root.append(h('section.panel.ans.old', {}, h('div.lbl', '前の局面の答え'), nextView(S.result, false)));
     return;
   }
-  root.append(resultView(S.result, rerender, {checkList, computeBtn}));
+  root.append(resultView(S.result, rerender, {checkList}));
 }
 
 // 次の手の見せ方（大きく）
@@ -80,11 +83,12 @@ function nextView(R, interim) {
   const b = R.best;
   return h('div.nextv', {},
     h('div.nmain', {}, R.nextIcon ? pic(R.nextIcon.kind, R.nextIcon.id, R.next, 64) : null, h('div.ntext', R.next || '—')),
-    b && h('div.kpis', {}, kpi('達成率', b.pText), kpi('ドリンク', num3(b.dNum), '本'), kpi('操作', num3(b.aNum), '回')));
+    b && h('div.kpis', {}, kpi('達成率', b.pText), kpi('ドリンク', num3(b.dNum), '本'), kpi('手数', num3(b.aNum), '回')),
+    b && !interim && h('div.kpinote', 'ドリンク・手数は、引く札によって変わる数の見込み（平均）です。'));
 }
 const kpi = (label, v, unit = '') => h('div.kpi', {}, h('div.kl', label), h('div.kv', v, h('small', unit)));
 
-function resultView(R, rerender, {checkList, computeBtn} = {}) {
+function resultView(R, rerender, {checkList} = {}) {
   // エンジンが「全体で最適とは証明できていない」と言うときは、最適と出さない（optimalityProven、AEGIS_SPEC.md 8章）
   let kind = R.canceled ? (R.kind === 'optimal' ? 'optimal' : 'provisional') : R.kind;
   if (kind === 'optimal' && R.optimalityProven === false) kind = 'provisional';
@@ -102,22 +106,6 @@ function resultView(R, rerender, {checkList, computeBtn} = {}) {
   if (b && b.pNum === 0 && kind === 'optimal') add(h('p.warnline', '目標点に届く手順がありません（届く最大 0%）。' + (ms?.exact && !ms.reached ? `どう引いても、最大で ${fmt(ms.value)} 点です。` : '')));
   else if (ms?.exact && !ms.reached) add(h('p.hint', `どう打っても、取れる点は最大で ${fmt(ms.value)} 点です（目標点に届かない）。`));
   if (R.retargeted) add(h('p.hint', '同じ局面の前の計算を使って、目標・基準を変えた答えを出しました（答えは計算し直したときと同じです）。'));
-  // 暫定（予算切れ・中止）：予算を2倍にして計算し直す道を出す。達成率0%の暫定は、届かないと決まったわけではないことを書く
-  if (kind !== 'optimal') {
-    const sec = Math.round((R.budgetSec ?? S.settings.budgetSec) * 2), states = Math.round((R.maxStates ?? S.settings.maxStates) * 2);
-    const addSec = Math.max(10, Math.round(S.settings.budgetSec));   // 続きから足す時間（設定の予算と同じ）
-    const resumeOk = R.resumable && canResume();
-    add(h('div.budget', {},
-      b && b.pNum === 0 ? h('p.warnline', 'この予算の中では、目標点に届く手順がまだ見つかっていません（届かないと決まったわけではありません）。下のボタンで見つかることがあります。')
-        : h('p.hint', '予算（時間・状態数）の中で見つけた答えです。最適とは限りません。'),
-      resumeOk
-        ? h('button.wide.pri', {disabled: !!checkList?.querySelector?.('.err'), onclick: () => resumeRun(addSec)}, `続きから計算する（＋${addSec}秒。ここまでの計算を使う）`)
-        : h('button.wide', {disabled: !!checkList?.querySelector?.('.err'), onclick: () => recompute({budgetSec: sec, maxStates: states}, {keep: true})}, `予算を2倍にして計算し直す（${sec}秒・状態 ${fmt(states)}）`),
-      !resumeOk && R.resumeReason && h('p.hint', '続きからはできません：' + R.resumeReason),
-      R.resumedSec ? h('p.hint', `ここまでの計算：${R.budgetSec}秒（うち続きから ${R.resumedSec}秒）`) : null,
-      h('p.hint', 'いつもの予算は「設定」で変えられます。')));
-  }
-
   // プレイの案内（同じ欄の中で進む）
   if (R.tree) {
     S.play ||= {steps: []};
@@ -131,7 +119,7 @@ function resultView(R, rerender, {checkList, computeBtn} = {}) {
         makeErr && h('p.warnline', '作れませんでした：' + makeErr));
     } else if (waiting) {
       add(h('div.lbl', '何を引きましたか？'),
-        h('p.hint', '使った後の手札（全部）です。色の枠が、新しく来た札です。'),
+        h('p.hint', '使った後の手札（全部）です。色の枠が、ドロー札（新しく来た札）です。'),
         h('div.draws', node.edges.map((e, i) => h('button.drawbtn', {onclick: () => push({type: 'draw', i, label: drawnText(e.drawn)})},
           h('div.dpics', (e.hand || e.drawn).slice(0, 6).map(x => h('span.hcard', {class: x.isNew !== false ? 'new' : 'old'}, pic('cards', x.id, x.name, 34)))),
           h('b', drawnText(e.drawn)),
@@ -151,6 +139,22 @@ function resultView(R, rerender, {checkList, computeBtn} = {}) {
       h('div.row', {}, h('button.mini', {onclick: () => { steps.pop(); save(); rerender(); }}, '1つ戻す'), h('button.mini', {onclick: () => { S.play = {steps: []}; save(); rerender(); }}, '最初から'))));
   } else add(h('div.lbl', '次の手'), nextView(R, false));
 
+  // 暫定（予算切れ・中止）：予算を2倍にして計算し直す道を出す。達成率0%の暫定は、届かないと決まったわけではないことを書く
+  if (kind !== 'optimal') {
+    const sec = Math.round((R.budgetSec ?? S.settings.budgetSec) * 2), states = Math.round((R.maxStates ?? S.settings.maxStates) * 2);
+    const addSec = Math.max(10, Math.round(S.settings.budgetSec));   // 続きから足す時間（設定の予算と同じ）
+    const resumeOk = R.resumable && canResume();
+    add(h('div.budget', {},
+      b && b.pNum === 0 ? h('p.warnline', 'この予算の中では、目標点に届く手順がまだ見つかっていません（届かないと決まったわけではありません）。下のボタンで見つかることがあります。')
+        : h('p.hint', '時間内に見つけた答えです。もっと良い答えがあるかもしれません。'),
+      resumeOk
+        ? h('button.wide', {disabled: !!checkList?.querySelector?.('.err'), onclick: () => resumeRun(addSec)}, `続きから計算する（＋${addSec}秒。ここまでの計算を使う）`)
+        : h('button.wide', {disabled: !!checkList?.querySelector?.('.err'), onclick: () => recompute({budgetSec: sec, maxStates: states}, {keep: true})}, `予算を2倍にして計算し直す（${sec}秒・状態 ${fmt(states)}）`),
+      !resumeOk && R.resumeReason && h('p.hint', '続きからはできません：' + R.resumeReason),
+      R.resumedSec ? h('p.hint', `ここまでの計算：${R.budgetSec}秒（うち続きから ${R.resumedSec}秒）`) : null,
+      h('p.hint', 'いつもの予算は「設定」で変えられます。')));
+  }
+
   // 同じ評価の手順（短く）
   const se = R.sameEval;
   if (se && (se.root > 1 || se.altNodes > 0)) add(h('div.same', {},
@@ -162,7 +166,6 @@ function resultView(R, rerender, {checkList, computeBtn} = {}) {
     S.ui.steps ? '全手順（詳細）を閉じる' : '全手順（詳細）を見る ↓'));
   add(h('button.more', {onclick: () => { detailsOpen = !detailsOpen; rerender(); }}, (detailsOpen ? '▾' : '▸') + ' 詳しく（比較表・自然さ・答えの確かさ）'));
   if (detailsOpen) add(details(R, kind, stName, stCls));
-  if (computeBtn) add(h('div.recalc', {}, checkList, computeBtn));
   add(h('button.more', {title: '版・設定・局面・答えをコピーします（個人情報は入りません）', onclick: copyReport}, '答えがおかしい？ 報告用の情報をコピー'));
   return box;
 }

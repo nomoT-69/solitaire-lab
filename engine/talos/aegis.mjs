@@ -30,6 +30,8 @@ const trim=model=>{if(model.engine?.trimCaches)model.engine.trimCaches();};
 // α を決めた比較では、見込みの段は「達成率最大」（辞書式、速い）で解く（α の前線を見込みの順で作ると重く、GUI の局面でメモリ不足になった。DESIGN 22.4）
 const capStages=(opts,list)=>list.flatMap(c=>{const cap=typeof c==='number'?c:c.cap;return opts.capHeat!==false?[{cap,heat:true},{cap,heat:false}]:[{cap,heat:!!c.heat}];});
 const capOpts=(model,opts,st)=>({layerCap:st.cap,capScore:st.heat?heatCapScore(model,opts.capHeatLambda??8):undefined});
+// opts.beamHeat（G2 2026-11-04、設計案の検証2。利用者の決定で既定 8、0 で前の順）：暫定の答えを作る Javelin の上位1〜3手の探索で、手の順に熱意の見込み（λ）を使う。厳密な Javelin は今の順のまま
+// opts.beamMaxMemo（既定 10万）：上位1〜3手の探索で覚える局面の数の上限。1局面 4〜22KB なので、ブラウザ（メモリを測れない）でも約0.4〜2GB で止まる（上位1手は1〜3万局面で終わる）
 const capLabel=st=>st.cap+(st.heat?'・熱意の見込み':'');
 export function solveAegis(model,opts={}){
   // 部分改善の値（最終点の ev・floor）を、ソルバの内部の形（これから得る得点）に直す
@@ -55,12 +57,13 @@ export function solveAegis(model,opts={}){
   // α を決めた比較でも、最初の暫定は「達成率を最大にする」Javelin の上位1〜3手で作る（実際に打てる方策。α の比較でもそのまま候補になる。2026-11-04）
   const bm=beamOpts(opts);
   if(bm)for(const b of opts.beams??[1,2,3]){if(p1())break;if(left()<=0)break;
-    const r=solveJavelin(model,{...bm,beam:b,maxMs:stepMs()});offer(r,'Javelin（上位'+b+'手'+(crit?'':'・達成率最大')+'）');if(r.status!=='complete')break;}
-  const capsLeft=capStages(opts,caps);
+    const r=solveJavelin(model,{...bm,beam:b,maxMs:stepMs(),orderHeat:opts.beamHeat??8,maxMemo:opts.beamMaxMemo??1e5});offer(r,'Javelin（上位'+b+'手'+((opts.beamHeat??8)?'・熱意の見込みの順':'')+(crit?'':'・達成率最大')+'）');if(r.status!=='complete')break;}
+  const capsLeft=capStages(opts,caps);let memStop=false;
   // asMax：α を決めた比較でも、届く最大の基準（速い辞書式）で解いて暫定の候補にする。その答えは α の最適ではないので、最終にはしない
   const tryCap=(st,ms,asMax=false)=>{const cap=capLabel(st);const r=solveTomahawk(model,{...(asMax?{...opts,criterion:'max'}:opts),...capOpts(model,opts,st),maxStates:Infinity,maxMs:ms});if(opts.compact!==false)trim(model);
     // 層の上限に一度も当たらずに終わったら、絞っていないので厳密に解けている：最適（証明済み）として返す（レビュー JA2 の確認で見つけた）
     if(r.status==='complete'&&r.optimalityProven&&!asMax){trials.push({solver:'Tomahawk（層の上限 '+cap+'、上限に当たらず完了）',status:r.status,ms:r.stats?.elapsedMs});r.solver='Tomahawk';r.trials=trials;return r;}
+    if(r.reason==='MEMORY_LIMIT'){memStop=true;trials.push({solver:'Tomahawk（層の上限 '+cap+'）',status:r.status,reason:r.reason,ms:r.stats?.elapsedMs});return null;}   // メモリの上限：これより大きい層の上限も無理
     offer(r,'Tomahawk（層の上限 '+cap+(asMax?'・達成率最大':'')+'）');return null;};
   // 早めの層の上限は小さく（既定5千：重い局面で約1秒）。後の改善は caps（既定 2万 → 10万 → 30万）
   for(const st of capStages(opts,[opts.earlyCap??5000])){if(p1()||left()<=0)break;const done=tryCap(st,Math.min(left(),maxMs*(opts.capFrac??0.15)),!crit&&opts.alphaEarlyMax!==false);if(done)return done;}
@@ -76,7 +79,7 @@ export function solveAegis(model,opts={}){
       const im=improvePolicy(model,prov.extract(),{...opts,maxMs:left(),onUpdate:onUpdate?u=>onUpdate({...finish(prov,false),best:summarizeV(u.value),improvedDag:u.dag}):null});
       trials.push({solver:'部分改善（Javelin）',status:'complete',ms:Date.now()-t0,best:[im.best.p,im.best.d,im.best.a],replaced:im.stats.replaced,tried:im.stats.tried});
       if(im.stats.replaced){const dag=im.dag;prov={...prov,best:im.best,bestRaw:toRaw(im.value),extract:()=>dag,solver:'部分改善（Javelin）'};}}
-  }else for(const st of capsLeft){if(left()<=0)break;const done=tryCap(st,left(),st.heat&&!crit);if(done)return done;}
+  }else for(const st of capsLeft){if(left()<=0||memStop)break;const done=tryCap(st,left(),st.heat&&!crit);if(done)return done;}
   if(!prov)return {status:'incomplete',reason:'TIME_LIMIT',kind:'incomplete',kindLabel:'未完了',trials,stats:{elapsedMs:Date.now()-started}};
   return finish(prov,true);
 }
@@ -118,7 +121,7 @@ export function createAegisJob(model,opts={}){
     // 2) 安い暫定：Javelin の上位1〜3手（最初の run だけ）と、Tomahawk の層の上限5千（続きから）
     const stepMs=()=>Math.min(left(),Math.max(5000,maxMs*(opts.earlyFrac??0.05)));const beams=opts.beams??[1,2,3];
     while(J.beamIdx<beams.length){if(p1()||left()<=0){J.beamIdx=Infinity;break;}const b=beams[J.beamIdx++];
-      const r=solveJavelin(model,{...bm,beam:b,maxMs:stepMs()});offer(r,'Javelin（上位'+b+'手'+(crit?'':'・達成率最大')+'）');if(r.status!=='complete'){J.beamIdx=Infinity;break;}}
+      const r=solveJavelin(model,{...bm,beam:b,maxMs:stepMs(),orderHeat:opts.beamHeat??8,maxMemo:opts.beamMaxMemo??1e5});offer(r,'Javelin（上位'+b+'手'+((opts.beamHeat??8)?'・熱意の見込みの順':'')+(crit?'':'・達成率最大')+'）');if(r.status!=='complete'){J.beamIdx=Infinity;break;}}
     const tryCap=(st,res,ms,asMax=false)=>{const cap=capLabel(st);const r=solveTomahawk(model,{...(asMax?{...opts,criterion:'max'}:opts),...capOpts(model,opts,st),maxStates:Infinity,maxMs:ms,resume:res});if(r.status==='complete'&&opts.compact!==false)trim(model);
       if(r.status==='complete'&&r.optimalityProven&&!asMax){J.trials.push({solver:'Tomahawk（層の上限 '+cap+'、上限に当たらず完了）',status:r.status,ms:r.stats?.elapsedMs});r.solver='Tomahawk';r.trials=J.trials.slice();J.final=r;return 'final';}
       if(r.status==='complete'){offer(r,'Tomahawk（層の上限 '+cap+(asMax?'・達成率最大':'')+'）');return 'done';}

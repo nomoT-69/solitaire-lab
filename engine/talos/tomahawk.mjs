@@ -221,7 +221,17 @@ export function solveTomahawk(model,opts){
   const layerCap=opts.layerCap||0;let dropped=R0?.dropped??0;
   let transitions=R0?.transitions??0,invarianceChecks=R0?.invarianceChecks??0,horizonCut=R0?.horizonCut??0,peakFrontier=0,segmentsTotal=0,maxLayer=R0?.maxLayer??0,cutNodes=0;
   const heapMiB=()=>globalThis.process?.memoryUsage?.().heapUsed/1048576||0;
-  let chk=0;const check=()=>{if(Date.now()-started>maxMs)throw Error('TIME_LIMIT');if(nodeK.n>maxStates)throw Error('STATE_LIMIT');if(opts.maxHeapMiB&&(++chk&63)===0&&heapMiB()>opts.maxHeapMiB)throw Error('MEMORY_LIMIT');};
+  // 見積もりのメモリ（opts.maxEstMiB、G2 2026-11-04、設計案の検証3）：ブラウザでは使用メモリを測れないので、数から見積もる。
+  // 見積もり＝型付き配列のバイト数（正確）＋ 展開中の層の状態の数 × EST.state ＋ エンジンの表（信念・効果の並び）× EST.table ＋ 曲線の区間 × EST.seg ＋ EST.base
+  let fwRef=null;const EST={state:opts.estState??700,table:opts.estTable??400,seg:opts.estSeg??120,base:opts.estBase??300*1048576};
+  const GROWS=()=>[nodeK,minNeed,actStart,actFlag,brStart,brChild,brGain,brProb,pathGain,dropF];
+  function estParts(){let typed=0;for(const g of GROWS())typed+=g.a.byteLength;if(maxGain)typed+=maxGain.byteLength;
+    const live=fwRef?(fwRef.next?fwRef.next.length:0)+Math.max(0,fwRef.layer.length-fwRef.li):0;
+    const es=E?.stats?.();const tables=es?es.beliefs+es.effLists:0;
+    return {typed,live,tables,segs:segmentsTotal,est:typed+EST.state*live+EST.table*tables+EST.seg*segmentsTotal+EST.base};}
+  const estMiB=()=>estParts().est/1048576;
+  let chk=0;const check=()=>{if(Date.now()-started>maxMs)throw Error('TIME_LIMIT');if(nodeK.n>maxStates)throw Error('STATE_LIMIT');
+    if((++chk&63)===0){if(opts.maxHeapMiB&&heapMiB()>opts.maxHeapMiB)throw Error('MEMORY_LIMIT');if(opts.onEst)opts.onEst(estParts());if(opts.maxEstMiB&&estMiB()>opts.maxEstMiB)throw Error('MEMORY_LIMIT');}};
   function checkInvariance(s0,act,br){
     const x=prepare?1000003:Math.max(1,Math.floor(rootNeed/2)),bx=branchesOf(W(s0,x),act);invarianceChecks++;
     if(bx.length!==br.length)throw Error('SCORE_DEPENDENCE');
@@ -252,8 +262,8 @@ export function solveTomahawk(model,opts){
       const hPop=h=>{const v=h.v[0],i=h.i[0],lv=h.v.pop(),li=h.i.pop();if(h.v.length){h.v[0]=lv;h.i[0]=li;let c=0;for(;;){const l=2*c+1,r=l+1;let m=c;if(l<h.v.length&&h.v[l]<h.v[m])m=l;if(r<h.v.length&&h.v[r]<h.v[m])m=r;if(m===c)break;[h.v[m],h.v[c]]=[h.v[c],h.v[m]];[h.i[m],h.i[c]]=[h.i[c],h.i[m]];c=m;}}return [v,i];};
       // 古い（値が変わった・捨てた）項目を取り除いた最小
       const hMin=(h,next,sc)=>{while(h.v.length&&(next[h.i[0]]===null||sc[h.i[0]]!==h.v[0]))hPop(h);return h.v.length?h.v[0]:-Infinity;};
-      ranForward=true;let fw=R0?.fw??null;
-      if(!fw){const s0=W(model.root,0);nodeK.push(maxOps);minNeed.push(rootNeed);pathGain.push(0);dropF.push(0);fw={k:maxOps,li:0,layer:[s0],layerFirst:0,ids:null,next:null,nextFirst:0};if(R0)R0.fw=fw;}
+      ranForward=true;let fw=R0?.fw??null;fwRef=fw;
+      if(!fw){const s0=W(model.root,0);nodeK.push(maxOps);minNeed.push(rootNeed);pathGain.push(0);dropF.push(0);fw={k:maxOps,li:0,layer:[s0],layerFirst:0,ids:null,next:null,nextFirst:0};if(R0)R0.fw=fw;fwRef=fw;}
       for(;fw.k>=0&&fw.layer.length;fw.k--){
         const k=fw.k;
         if(!fw.ids){fw.ids=new BigMap(opts.mapLimit);fw.next=[];fw.nextFirst=nodeK.n;fw.li=0;fw.live=0;fw.sink=-1;fw.hp={v:[],i:[]};fw.sc=[];maxLayer=Math.max(maxLayer,fw.layer.length);}
@@ -306,7 +316,7 @@ export function solveTomahawk(model,opts){
           for(let j=layerCap;j<idx.length;j++){lay[idx[j]]=null;dropF.a[lf+idx[j]]=1;dropped++;}}
       }
       actStart.push(actFlag.n);brStart.push(brChild.n);
-      if(R0){R0.forwardDone=true;R0.fw=null;}
+      fwRef=null;if(R0){R0.forwardDone=true;R0.fw=null;}
       forwardMs=Date.now()-started;
     }
     if(rootNeed>0){
@@ -323,7 +333,7 @@ export function solveTomahawk(model,opts){
       for(let id=id0;id>=0;id--){
         if(R0)R0.bid=id;
         if((id&(R0?63:1023))===0&&Date.now()-started>maxMs)throw Error('TIME_LIMIT');
-        if(opts.maxHeapMiB&&(id&1023)===0&&heapMiB()>opts.maxHeapMiB)throw Error('MEMORY_LIMIT');   // 後ろ向きでもメモリの上限を見る（α の前線が大きい局面。2026-11-04）
+        if((id&1023)===0){if(opts.maxHeapMiB&&heapMiB()>opts.maxHeapMiB)throw Error('MEMORY_LIMIT');if(opts.onEst&&(id&16383)===0)opts.onEst(estParts());if(opts.maxEstMiB&&estMiB()>opts.maxEstMiB)throw Error('MEMORY_LIMIT');}   // 後ろ向きでもメモリの上限を見る（α の前線が大きい局面。2026-11-04）
         curves[id]=lexMode?rangeLex(id):range(id);progressed=true;
       }
       if(R0)R0.bid=-1;
@@ -426,7 +436,7 @@ export function solveTomahawk(model,opts){
     return finish(curve,lo,hiCut);
   }
   const mem=globalThis.process?.memoryUsage?.();
-  const stats={extrasMode:mode,reduce:reduceX,frontierDims:lexMode?'lex':lexFull?'lex-full':fdim,nodes:nodeK.n,transitions,invarianceChecks,horizonCut,cutNodes,peakFrontier,segmentsTotal,forwardMs,backwardMs,elapsedMs:Date.now()-started,maxLayer,
+  const stats={extrasMode:mode,reduce:reduceX,frontierDims:lexMode?'lex':lexFull?'lex-full':fdim,nodes:nodeK.n,branches:brChild.n,actions:actFlag.n,transitions,invarianceChecks,horizonCut,cutNodes,peakFrontier,segmentsTotal,forwardMs,backwardMs,elapsedMs:Date.now()-started,maxLayer,
     probs:probs.length,engine:E?.stats?.()??null,heapUsedMiB:mem?Math.round(mem.heapUsed/1048576):null};
   // 結果の種類：optimal（最適、証明済み）／incomplete（未完了）。上限で切った状態が0件なら、操作数の上限がなくても最適
   const scopeOf=()=>horizonCut===0?'上限なしでも最適（操作数の上限 '+maxOps+' で切った状態は0件）':'操作数の上限 '+maxOps+' の範囲での最適（上限で切った状態 '+horizonCut+' 件）';

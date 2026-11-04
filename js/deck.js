@@ -102,10 +102,10 @@ export function renderDeck(root, rerender) {
       pic(tab, tab === 'cards' && plusPref && x.plusId ? x.plusId : x.id, x.name, 40),
       h('div.rn', {}, h('b', x.name), x.alias?.length ? h('small.alias', ' （' + x.alias.join('・') + '）') : null,
         h('small.meta', [x.custom ? '自作の札' : PLAN_NAME[x.plan] || '', x.rarity, x.idol].filter(Boolean).join('・')),
-        unsup(tab, x) && h('small.unsup', '計算は未対応：' + unsup(tab, x))),
+        unsup(tab, x) && h('small.unsup', {title: '計算は未対応：' + unsup(tab, x)}, '⚠ 計算は未対応（印に触れると理由）')),
       tab === 'cards'
-        ? h('div.addb', h('button', {onclick: e => { e.stopPropagation(); add('cards', x, false); }}, '通常'), x.plusId && h('button.pri', {onclick: e => { e.stopPropagation(); add('cards', x, true); }}, '＋'))
-        : h('div.addb', h('button.pri', {onclick: e => { e.stopPropagation(); add(tab, x); }}, tab === 'pidols' ? '選ぶ' : '足す')));
+        ? h('div.addb', h('button', {onclick: e => { e.stopPropagation(); add('cards', x, false); }}, '通常'), x.plusId && h('button.sec', {onclick: e => { e.stopPropagation(); add('cards', x, true); }}, '＋'))
+        : h('div.addb', h('button.sec', {onclick: e => { e.stopPropagation(); add(tab, x); }}, tab === 'pidols' ? '選ぶ' : '足す')));
   }
   function fchip(set, key, label) {
     return h('button.fchip', {class: set.has(key) ? 'on' : '', onclick: () => { set.has(key) ? set.delete(key) : set.add(key); resScroll = 0; rerender(); }}, label);

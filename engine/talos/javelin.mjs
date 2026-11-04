@@ -10,6 +10,7 @@
 //  ・自然さの指標は tiebreak（ev・floor・ev→floor）に対応する。floor→ev（重い方式）は Tomahawk を使う。
 //  ・beam>0 は、各局面で試す手を、順番の上位 beam 個に限る（暫定の答えを速く作るため。答えは「その手の範囲での最良」で、検証済みの方策になる）。
 import {ZERO,ONE,R,add as addR,mul as mulR,cmp as cmpR,str,toNum} from '../src/rational.mjs';
+import {heatCapScore} from './tomahawk.mjs';
 const add=(x,y)=>{if(x.n===0n)return y;if(y.n===0n)return x;if(x.d===y.d&&x.d===1n)return {n:x.n+y.n,d:1n};return addR(x,y);};
 const mul=(x,y)=>{if(x.n===0n||y.n===0n)return ZERO;if(x.n===x.d)return y;if(y.n===y.d)return x;if(x.d===1n&&y.d===1n)return {n:x.n*y.n,d:1n};return mulR(x,y);};
 const cmp=(x,y)=>{if(x===y)return 0;if(x.d===y.d)return x.n<y.n?-1:x.n>y.n?1:0;return cmpR(x,y);};
@@ -55,12 +56,17 @@ export function solveJavelin(model,opts={}){
   // 同じ比べ方（order・extras・prune・dominance）、beam:0 のときだけ渡す
   const memo=opts.memo??new Map();   // 局面のキー|残り → {s, acts, iv:[{lo,hi,v,act}]}
   // 手：{type, flag, h（順番の評価）, br:[{p,pf,g,ck,cs}]}（br はエンジンの順。試す順は ord）
+  // opts.profile（測定用、2026-11-04）：遷移を作る時間、楽観値の集計（opt）の時間、一度も調べなかった手（遷移だけ作って、毎回最初の見積もりで省いた手）の数
+  const PF=opts.profile?{trMs:0,optMs:0,optCalls:0}:null;const now=()=>performance.now();
+  // opts.orderHeat（試作・測定用、G2 2026-11-04、設計案の検証2）：手を試す順を「その場の期待得点＋子の熱意の見込み」（heatCapScore、λ=opts.orderHeat）の大きい順にする。
+  // 順番だけに使い、省く判定（正しい見積もり）は変えないので、答えは同じ
+  const HS=opts.orderHeat?heatCapScore(model,opts.orderHeat):null;
   function expand(e){
     if(e.acts)return e.acts;expanded++;
     const cs=choicesOf(e.s);
-    e.acts=cs.map((a,i)=>{const br=branchesOf(e.s,a);transitions++;
+    e.acts=cs.map((a,i)=>{const t0=PF?now():0;const br=branchesOf(e.s,a);transitions++;if(PF)PF.trMs+=now()-t0;
       for(const b of br){b.cs=b.s;b.cs=W(b.s,0);b.ck=keyOf(b.cs);if(useDom){b.dk=E.domKey(b.cs);b.h=E.domVal(b.cs);}b.s=null;}
-      let h=0;for(const b of br)h+=b.pf*b.g;
+      let h=0;for(const b of br)h+=b.pf*(HS?HS(b.cs,b.g):b.g);
       const ord=br.map((_,j)=>j).sort((x,y)=>br[y].pf-br[x].pf);
       return {i,type:a.type,drink:a.type==='drink',skip:a.type==='skip',h,br,ord};});
     // 試す順：その場の期待得点の大きい順、同じならドリンクを後に（評価は順番だけに使う）
@@ -98,11 +104,17 @@ export function solveJavelin(model,opts={}){
           const u=c||(useDom?domBound(b,k-1,n-b.g):null);
           if(u){p=add(p,mul(b.p,u.p));d=add(d,mul(b.p,u.d));a=add(a,mul(b.p,u.a));}else{p=add(p,b.p);a=add(a,mul(b.p,aMin));}}
         return {p,d,a};};
-      if(prune&&bestAct>=0&&pdaCmp(opt(),best)<0){pruned++;continue;}
+      if(PF){const t0=now();const o=opt();PF.optMs+=now()-t0;PF.optCalls++;
+        // 遷移を作る前でも分かる見積もり（達成率1・ドリンク dc・行動 ac。分岐が目標に届けば行動は増えないので ac だけ）で省けたか
+        if(prune&&bestAct>=0&&pdaCmp(mk(ONE,dc,ac,ZERO,ZERO),best)<0)A.pre0=true;
+        if(prune&&bestAct>=0&&pdaCmp(o,best)<0){pruned++;continue;}}
+      else if(prune&&bestAct>=0&&pdaCmp(opt(),best)<0){pruned++;continue;}
+      A.used=true;
       let cut=false;
       for(const j of A.ord){const b=A.br[j];if(b.g>=n)continue;
         const r=value(b.ck,b.cs,k-1,n-b.g);if(lean)b.cs=null;vals[j]=r.v;lo=Math.max(lo,r.lo+b.g);hi=Math.min(hi,r.hi+b.g);
-        if(prune&&bestAct>=0&&pdaCmp(opt(),best)<0){cut=true;break;}}
+        if(PF){const t0=now();const o=opt();PF.optMs+=now()-t0;PF.optCalls++;if(prune&&bestAct>=0&&pdaCmp(o,best)<0){cut=true;break;}}
+        else if(prune&&bestAct>=0&&pdaCmp(opt(),best)<0){cut=true;break;}}
       if(cut){pruned++;continue;}
       // 本当の値
       let v=mk(ZERO,dc,ac,ZERO,null);
@@ -118,8 +130,11 @@ export function solveJavelin(model,opts={}){
   const s0=W(model.root,0);const rootKey=keyOf(s0);
   try{root=rootNeed<=0?{v:GOAL,lo:-Infinity,hi:0,act:-1}:value(rootKey,s0,maxOps,rootNeed);}
   catch(e){if(!['TIME_LIMIT','MEMO_LIMIT'].includes(e.message))throw e;status='incomplete';reason=e.message;}
+  if(PF){let acts=0,unused=0,brAll=0,brUnused=0,unusedPre=0,brUnusedPre=0;const byType={};for(const e of memo.values())if(e.acts)for(const A of e.acts){acts++;brAll+=A.br.length;if(!A.used){unused++;brUnused+=A.br.length;byType[A.type]=(byType[A.type]||0)+1;if(A.pre0){unusedPre++;brUnusedPre+=A.br.length;}}}
+    PF.unusedByType=byType;PF.unusedPre0=unusedPre;PF.unusedBranchesPre0=brUnusedPre;
+    Object.assign(PF,{acts,unusedActs:unused,branches:brAll,unusedBranches:brUnused,trMs:Math.round(PF.trMs),optMs:Math.round(PF.optMs)});}
   const mem=globalThis.process?.memoryUsage?.();
-  const stats={dominance:useDom,domHits,memo:memoSize,expanded,transitions,pruned,memoHits,horizonCut,elapsedMs:Date.now()-started,beam,prune,heapUsedMiB:mem?Math.round(mem.heapUsed/1048576):null};
+  const stats={profile:PF,dominance:useDom,domHits,memo:memoSize,expanded,transitions,pruned,memoHits,horizonCut,elapsedMs:Date.now()-started,beam,prune,heapUsedMiB:mem?Math.round(mem.heapUsed/1048576):null};
   // 範囲の説明。手を絞った探索（beam）は、全体での最適を証明しない（2026-11-03、レビュー JA2）
   const scope=beam>0?'試す手を各局面の上位 '+beam+' 個に絞った範囲での最良（全体での最適は未証明'+(horizonCut?'。操作数の上限 '+maxOps+' で切った状態 '+horizonCut+' 件':'')+'）'
     :horizonCut===0?'上限なしでも最適（操作数の上限 '+maxOps+' で切った状態は0件）':'操作数の上限 '+maxOps+' の範囲での最適（上限で切った状態 '+horizonCut+' 件）';
