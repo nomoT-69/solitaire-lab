@@ -12,7 +12,7 @@
 //  5. DSL の式は、読み込み時に関数へ変換する。札の対象の判定は、札の種類ごとに覚える。
 //  6. 読まれない数（直前の指針、指針の回数、札の使用回数など）は、その局面で読む札・効果がなければキーに入れない（状態が減る）。
 //     局面に出うる札（初期の札、山札に入る札、青汁の候補）の DSL を読み込み時に調べて決める。
-import {cardVariant} from './data.mjs';
+import {cardVariant,sharedAbilityItem} from './data.mjs';
 const gcd=(a,b)=>{while(b){const t=a%b;a=b;b=t;}return a;};
 function q(n,d){if(!Number.isSafeInteger(n)||!Number.isSafeInteger(d)||d<=0)throw Error('TALOS_RATIONAL_OVERFLOW');const g=gcd(n,d);return g===1?[n,d]:[n/g,d/g];}
 const qmul=(a,b)=>a[0]===1&&a[1]===1?b:b[0]===1&&b[1]===1?a:q(a[0]*b[0],a[1]*b[1]);
@@ -265,7 +265,7 @@ export function createEngine(data,setup,options={}){
         if(/^\d+$/.test(e.name))return c.baseId===Number(e.name);break;}
       case 'call':{const c=types[ty].card,v=e.args[0]?.t==='num'?e.args[0].v:Number(e.args[0]?.name);
         if(e.name==='baseId')return c.baseId===v;if(e.name==='id')return c.id===v;
-        if(e.name==='effect')return c.effectNames.has(e.args[0].name);break;}
+        if(e.name==='effect')return c.effectNames.has(e.args[0].name);if(e.name==='ability')return (c.abilities||[]).includes(e.args[0]?.name);break;}
     }
     throw Error('未対応の対象: '+JSON.stringify(e));
   }
@@ -356,6 +356,11 @@ export function createEngine(data,setup,options={}){
       for(const e of it.effects){if(e.kind!=='effect'||!e.phase)throw Error('P アイテムの形が未対応: '+it.name);
         if(IN_TURN.has(e.phase)){const R=rec(defOf(e));R.c=x.counter??0;const n=R.l.length;applyLimits(R,x.limits?x.limits.slice(li,li+n):null,false,it.name);li+=n;effs.push(R);}}
       if(x.limits&&li!==x.limits.length)throw Error('残り回数の数が違います（'+it.name+'）：'+li+'個');}
+    // 名前ごとに共有するアビリティの効果（HIF 再動。2026-11-04）：局面の札にあれば、名前（通常版の番号）ごとに1つ登録する。
+    // 残り回数＝上限 − setup.abilityUses[アビリティ][通常版の番号]（これまでに使った回数、既定0）
+    {const seen=new Set();for(const k of ['hand','deck','discard','removed','held'])for(const x of piles[k]){const c=types[x.ty].card;for(const a of c.abilities||[]){
+      const iid=sharedAbilityItem(data,a,c.baseId);if(iid===null||seen.has(iid))continue;seen.add(iid);const it=data.items.get(iid);const used=setup.abilityUses?.[a]?.[c.baseId]??0;
+      for(const e of it.effects){if(!IN_TURN.has(e.phase))continue;const R=rec(defOf(e));R.l=R.l.map(v=>Math.max(0,v-used));effs.push(R);}}}}
     for(const r of setup.registered||[]){const card=data.cards.get(r.card);if(!card)throw Error('未登録の札: '+r.card);
       const nodes=[];(function f(items){for(const x of items)if(x.kind==='effect'){if(x.phase)nodes.push(x);else f(x.body);}})(card.actions);
       const n=nodes[r.index??0];if(!n)throw Error('登録する効果がありません: '+card.name);const R=rec(defOf(n));R.c=r.counter??0;applyLimits(R,r.limits,false,card.name);effs.push(R);}
@@ -634,7 +639,7 @@ export function createEngine(data,setup,options={}){
     return ok;
   }
   function holdSelected(s,ctx){
-    const sel=ctx.select;if(!sel)throw Error('保留する札が選ばれていません');
+    const sel=ctx.select;if(!sel){if(ctx.noSelect)return one(s);throw Error('保留する札が選ばれていません');}   // noSelect：選べる札がなかった（何も保留しない）
     const t=s;
     if(sel.from==='discard')t.disc=msDel(t.disc,sel.ty);
     else if(sel.from==='hand')t.hand=msDel(t.hand,sel.ty);
@@ -657,18 +662,23 @@ export function createEngine(data,setup,options={}){
     msRuns(beliefs[s.deck].content,ty=>{if(m(ty,'deck'))out.push({ty,from:'deck'});});
     return out.sort((a,b)=>a.ty-b.ty||a.from.localeCompare(b.from));
   }
-  function findSelect(items,name){const i=items.findIndex(x=>x.kind==='action'&&x.op==='call'&&/Selected/.test(x.name));
-    if(i<0)return null;if(i>0)throw Error('選択の行動が最初にない札は未対応: '+name);if(items[i].name!=='holdSelected')throw Error('未対応の選択: '+items[i].name);return items[i];}
+  // 選択の行動：効果の最初、または条件つきの入れ子（phase・target なし）の最初にあるとき（ノンストップの「if:… { holdSelected[hand] }」。2026-11-04 利用者の決定）。
+  // 入れ子のときは {target, name, cond}（cond は選ぶかどうかの条件。合法手を作るとき、使う前の状態で判定する）
+  function findSelect(items,name){const isSel=x=>x.kind==='action'&&x.op==='call'&&/Selected/.test(x.name);const i=items.findIndex(isSel);
+    if(i>=0){if(i>0)throw Error('選択の行動が最初にない札は未対応: '+name);if(items[i].name!=='holdSelected')throw Error('未対応の選択: '+items[i].name);return items[i];}
+    for(const x of items){if(x.kind!=='effect'||x.phase||x.target||!x.cond)continue;const j=(x.body||[]).findIndex(isSel);if(j<0)continue;
+      if(j>0)throw Error('選択の行動が最初にない札は未対応: '+name);if(x.body[j].name!=='holdSelected')throw Error('未対応の選択: '+x.body[j].name);return {target:x.body[j].target,name:x.body[j].name,cond:x.cond};}
+    return null;}
 
   // ---- 札を使う ----
-  function useCard(list,ty,{free=false,from=null,select=null}={}){
-    const card=types[ty].card;const ctx={used:ty,phase:null,parent:null,inCard:true,select};
+  function useCard(list,ty,{free=false,from=null,select=null,noSelect=false}={}){
+    const card=types[ty].card;const ctx={used:ty,phase:null,parent:null,inCard:true,select,noSelect};
     let cur=trigger(list,'beforeCardUsed',ctx);
     cur=each(cur,t=>{if(from==='hand')t.hand=msDel(t.hand,ty);if(!free)t.uses-=1;t.usedTy=ty;return one(t);});
     // コストの処理：コストを0にする残りがあれば1回使い（体力も減らない）、なければ stamina-= の札で staminaDecreased
     if(!free){const dsc=directStaminaCost(card),pc=positiveCost(card);if(K.nc||dsc)cur=each(cur,t=>{if(K.nc&&pc&&t.nc>0){t.nc--;return one(t);}return dsc?trigger(one(t),'staminaDecreased',{...ctx,parent:'processCost'}):one(t);});}
     cur=trigger(cur,'cardUsed',ctx);
-    const pctx={used:ty,phase:'processCard',parent:null,inCard:true,select};const ns=needsSnap(card.actions);
+    const pctx={used:ty,phase:'processCard',parent:null,inCard:true,select,noSelect};const ns=needsSnap(card.actions);
     cur=each(cur,t=>{t.em=1;t.sTimes=types[ty].g.scoreTimes;return runItems(one(t),card.actions,ns?clone(t):t,pctx);});
     cur=each(cur,t=>{const fin=t.usedTy;t.usedTy=-1;t.em=1;t.sTimes=0;
       t.cardsUsed++;t.turnUsed++;if(card.once)t.rem=msAdd(t.rem,fin);else t.disc=msAdd(t.disc,fin);return one(t);});
@@ -696,7 +706,9 @@ export function createEngine(data,setup,options={}){
     const out=[];
     if(s.uses>0){
       msRuns(s.hand,ty=>{if(!usableCard(s,ty))return;const c=types[ty].card;const sel=selOf(ty);
-        if(sel){for(const x of selectable(s,sel.target))out.push({type:'card',ty,id:c.id,name:c.name,select:x});}
+        // 条件つきの選択は、使う前の状態で条件を判定する。手札から選ぶときは、使う札そのもの（1枚）を除く（効果の前に手札から出ている）
+        if(sel&&(!sel.cond||exprFn(sel.cond)(s,{used:ty,phase:null,parent:null}))){const opts=selectable({disc:s.disc,hand:msDel(s.hand,ty),deck:s.deck},sel.target);
+          if(opts.length)for(const x of opts)out.push({type:'card',ty,id:c.id,name:c.name,select:x});else out.push({type:'card',ty,id:c.id,name:c.name,noSelect:true});}
         else out.push({type:'card',ty,id:c.id,name:c.name});});
       const capped=cfg.drinkCap!==null&&cfg.drinkBase-s.drinks.length>=cfg.drinkCap;
       if(!capped){let prev=-1;for(let i=0;i<s.drinks.length;i++){const id=s.drinks.charCodeAt(i)-BASE;if(id===prev)continue;prev=id;const dr=data.drinks.get(id);
@@ -712,7 +724,7 @@ export function createEngine(data,setup,options={}){
   // 返り値：{branches:[{p:[分子,分母], s}]}（p>0、合計1、キーの順）。得点の増分は s.score の差。s（入力）は書き換えない。
   function transition(s0,a){
     const s=clone(s0);let cur;
-    if(a.type==='card')cur=useCard(one(s),a.ty,{from:'hand',select:a.select||null});
+    if(a.type==='card')cur=useCard(one(s),a.ty,{from:'hand',select:a.select||null,noSelect:!!a.noSelect});
     else if(a.type==='drink')cur=useDrink(s,a);
     else if(a.type==='endTurn')cur=endTurn(one(s));
     else throw Error('未対応の行動: '+a.type);

@@ -6,6 +6,9 @@ import {unsupportedList, pItemInputs} from '../engine/talos/support.mjs';
 
 // 利用者が読み込んだ新しい gakumas-tools の CSV（データの更新）。このブラウザの中だけに保存する
 const CSV_KEY = 'aegis.csv.v1';
+// 札の一覧（デッキ・デッキにない札を足す）に出さない札（通常版の番号）。データ（HIF の組など）には入っているが、計算がまだ対応していない札
+// ラッシュ・ブースト：全力値が要る（利用者の指示 2026-11-04：入力だけできるようにして、今は隠しておく）。全力値に対応したら外す
+export const HIDDEN_CARDS = new Set([905, 907]);
 export const CSV_FILES = {skillCards: 'skill_cards.csv', pDrinks: 'p_drinks.csv', pItems: 'p_items.csv', customizations: 'customizations.csv', pIdols: 'p_idols.csv'};
 export function loadUserCsv() { try { return JSON.parse(localStorage.getItem(CSV_KEY)); } catch { return null; } }
 export function saveUserCsv(o) { if (o) localStorage.setItem(CSV_KEY, JSON.stringify(o)); else localStorage.removeItem(CSV_KEY); }
@@ -69,6 +72,7 @@ export async function loadAll() {
       registers: /at:cardUsed\s*\{\s*effectCounter/.test(r.actions) ? {counter: true}
         : /at:beforeCardUsed\s*\{.*limit:\d+/.test(r.actions) ? {limit: Number(r.actions.match(/at:beforeCardUsed\s*\{.*?limit:(\d+)/)[1])} : null,
       text: [r.actions, r.effects].filter(Boolean).join(' / ')};
+    c.hidden = HIDDEN_CARDS.has(c.baseId);
     D.cards.push(c); D.cardById.set(c.id, c);
   }
   for (const r of parseCsv(dr)) D.drinks.push({id: Number(r.id), name: r.name, plan: r.plan, text: r.actions});
@@ -120,6 +124,11 @@ export function checkCalcSettings(settings) {
   return checkCache.get(k);
 }
 // その札（通常版の番号）に HIF を付けられるか（設定の HIF の組に入っているか）
+// HIF の組のうち、名前ごとに共有する効果（shared。HIF 再動：同じ名前で合わせて2回まで）を持つ組の、回数の上限。なければ null
+export function hifSharedLimit(settings, baseId) {
+  const g = (settings || calcDefaults()).abilities?.HIF?.find(g => g.cards.includes(baseId) && g.shared != null);
+  return g ? Number((String(g.shared).match(/limit:(\d+)/) || [])[1] || 0) || null : null;
+}
 export const hifOk = (settings, baseId) => !!(settings || calcDefaults()).abilities?.HIF?.some(g => g.cards.includes(baseId));
 
 // 設定を当てたデータで、対応していない効果を持つ札など（エンジンの unsupportedList）。設定にエラーがあれば設定なしのデータで

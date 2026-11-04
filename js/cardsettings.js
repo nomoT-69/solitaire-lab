@@ -68,7 +68,9 @@ export function renderCardSettings(root, rerender) {
           for (const o of groups) if (o !== g) o.cards = o.cards.filter(x => x !== c.id);   // 別の組にあれば移す
           if (!g.cards.includes(c.id)) g.cards.push(c.id); commit(true);
         }),
-        h('div.fl2', '効果'), effectInput(g, 'actions', {placeholder: '例：cardUsesRemaining+=1; drawCard', onblur: () => mergeSame(name)}))),
+        h('div.fl2', '効果'), effectInput(g, 'actions', {placeholder: '例：cardUsesRemaining+=1; drawCard', onblur: () => mergeSame(name)}),
+        g.shared != null && h('div.fl2', '名前ごとに共有する効果（{id}＝通常版の番号。同じ名前の札で回数を共有する。例：HIF 再動）'),
+        g.shared != null && effectInput(g, 'shared', {placeholder: 'at:cardUsed[{id} & ability(HIF)] { cardUsesRemaining+=1; limit:2 }'}))),
       h('button', {onclick: () => { groups.push({cards: [], actions: ''}); commit(true); }}, '＋ 組を足す'))),
     h('button', {onclick: () => { const n = prompt('アビリティの名前（例：HIF2）'); if (!n) return; if (CS.abilities[n]) return alert('同じ名前があります'); CS.abilities[n] = []; commit(true); }}, '＋ アビリティを足す'));
 

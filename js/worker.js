@@ -239,6 +239,9 @@ function keepForFollow(job, r, key, model, dk) {
   } else job.dispose?.();
 }
 
+// 打ち切りの理由（エンジンの trials の reason）
+const REASON = {MEMORY_LIMIT: 'メモリの上限', TIME_LIMIT: '時間切れ', STATE_LIMIT: '状態数の上限'};
+
 const fmtBest = b => b && ({p: b.p, d: b.d, a: b.a, pNum: b.pNum, dNum: b.dNum, aNum: b.aNum, pText: pct(b.pNum), ev: b.ev ?? null, floor: b.floor ?? null});
 
 // 手の名前
@@ -339,7 +342,7 @@ function summarize(model, r, o, ms, final) {
     meetsAlpha: typeof r.meetsAlpha === 'boolean' ? r.meetsAlpha : null,
     maxScore: r.maxScore && typeof r.maxScore.value === 'number' ? {value: r.maxScore.value, reached: !!r.maxScore.reached, exact: !!r.maxScore.exact, atLeast: !!r.maxScore.atLeast, note: r.maxScore.note || ''} : null,   // この局面から取りうる最大の最終点   // 達成率を指定したとき（95% など）、その達成率を満たすか
     stats: {nodes: r.stats?.nodes ?? null, heapMiB: r.stats?.heapUsedMiB ?? null}, criterion: o.criterion, order: o.order, extras: o.extras,
-    trials: (r.trials || []).map(t => `${t.solver}：${({complete: '終了', incomplete: '打ち切り', provisional: '暫定'})[t.status] || t.status}${t.ms !== undefined ? '（' + (t.ms / 1000).toFixed(1) + '秒）' : ''}`)};
+    trials: (r.trials || []).map(t => `${t.solver}：${({complete: '終了', incomplete: '打ち切り', provisional: '暫定'})[t.status] || t.status}${t.status === 'incomplete' && t.reason ? '・' + (REASON[t.reason] || t.reason) : ''}${t.ms !== undefined ? '（' + (t.ms / 1000).toFixed(1) + '秒）' : ''}`)};
   if (!r.best || typeof r.extract !== 'function') return out;
   const pol = r.extract();
   if (!pol) return out;

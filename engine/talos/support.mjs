@@ -15,7 +15,7 @@ export const VARIABLES=new Set(['stance','prevStance','isStrength','isPreservati
 export const STANCE_NAMES=new Set(['preservation','preservation2','leisure','strength','strength2']);
 const FUNCS=new Set(['cardHasEffect','countCards','effectCounter']);
 const TARGET_IDS=new Set(['all','hand','deck','held','removed','discarded','active','mental','trouble','pIdol','T','N','R','SR','SSR','L','this']);
-const TARGET_CALLS=new Set(['baseId','id','effect']);
+const TARGET_CALLS=new Set(['baseId','id','effect','ability']);
 
 // 式の中の、対応していない変数・関数
 function exprProblems(e,out,where){

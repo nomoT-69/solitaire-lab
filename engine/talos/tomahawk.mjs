@@ -219,16 +219,17 @@ export function solveTomahawk(model,opts){
   if(R0&&!G0)R0.g={nodeK,minNeed,actStart,actFlag,brStart,brChild,brGain,brProb,pathGain,dropF};
   let curves=null,maxGain=null;
   const layerCap=opts.layerCap||0;let dropped=R0?.dropped??0;
+  let segsOwn=R0?.segsOwn??0;   // 見積もりのメモリ用：共有の「止める」曲線（LEAF）を除いた、本当にメモリを使う区間の数（続きからでも累計。2026-11-04）
   let transitions=R0?.transitions??0,invarianceChecks=R0?.invarianceChecks??0,horizonCut=R0?.horizonCut??0,peakFrontier=0,segmentsTotal=0,maxLayer=R0?.maxLayer??0,cutNodes=0;
   const heapMiB=()=>globalThis.process?.memoryUsage?.().heapUsed/1048576||0;
   // 見積もりのメモリ（opts.maxEstMiB、G2 2026-11-04、設計案の検証3）：ブラウザでは使用メモリを測れないので、数から見積もる。
-  // 見積もり＝型付き配列のバイト数（正確）＋ 展開中の層の状態の数 × EST.state ＋ エンジンの表（信念・効果の並び）× EST.table ＋ 曲線の区間 × EST.seg ＋ EST.base
-  let fwRef=null;const EST={state:opts.estState??700,table:opts.estTable??400,seg:opts.estSeg??120,base:opts.estBase??300*1048576};
+  // 見積もり＝型付き配列のバイト数（正確）＋ 展開中の層の状態の数 × EST.state ＋ エンジンの表（信念・効果の並び）× EST.table ＋ 曲線の区間 × EST.seg ＋ EST.base（700・6000・300・300MB）
+  let fwRef=null;const EST={state:opts.estState??700,table:opts.estTable??6000,seg:opts.estSeg??300,base:opts.estBase??300*1048576};   // 表・区間は 2026-11-04 に 400・120 から直した（30万の段の後ろ向きで実際が見積もりを1割上回ったため）
   const GROWS=()=>[nodeK,minNeed,actStart,actFlag,brStart,brChild,brGain,brProb,pathGain,dropF];
   function estParts(){let typed=0;for(const g of GROWS())typed+=g.a.byteLength;if(maxGain)typed+=maxGain.byteLength;
     const live=fwRef?(fwRef.next?fwRef.next.length:0)+Math.max(0,fwRef.layer.length-fwRef.li):0;
     const es=E?.stats?.();const tables=es?es.beliefs+es.effLists:0;
-    return {typed,live,tables,segs:segmentsTotal,est:typed+EST.state*live+EST.table*tables+EST.seg*segmentsTotal+EST.base};}
+    return {typed,live,tables,segs:segsOwn,est:typed+EST.state*live+EST.table*tables+EST.seg*segsOwn+EST.base};}
   const estMiB=()=>estParts().est/1048576;
   let chk=0;const check=()=>{if(Date.now()-started>maxMs)throw Error('TIME_LIMIT');if(nodeK.n>maxStates)throw Error('STATE_LIMIT');
     if((++chk&63)===0){if(opts.maxHeapMiB&&heapMiB()>opts.maxHeapMiB)throw Error('MEMORY_LIMIT');if(opts.onEst)opts.onEst(estParts());if(opts.maxEstMiB&&estMiB()>opts.maxEstMiB)throw Error('MEMORY_LIMIT');}};
@@ -344,7 +345,7 @@ export function solveTomahawk(model,opts){
       if(dropped&&opts.upperBound===true){try{pUB=upperP(N);}catch(e){if(e.message!=='TIME_LIMIT')throw e;pUB=null;ubNote='時間切れで上限を計算できなかった';}}
     }
   }catch(e){if(!['TIME_LIMIT','STATE_LIMIT','FRONTIER_LIMIT','MEMORY_LIMIT'].includes(e.message))throw e;status='incomplete';reason=e.message;}
-  if(R0){R0.transitions=transitions;R0.invarianceChecks=invarianceChecks;R0.horizonCut=horizonCut;R0.maxLayer=maxLayer;R0.dropped=dropped;if(ranForward)R0.forwardMs=(R0.forwardMs||0)+(forwardMs||Date.now()-started);R0.calls=(R0.calls||0)+1;}
+  if(R0){R0.segsOwn=segsOwn;R0.transitions=transitions;R0.invarianceChecks=invarianceChecks;R0.horizonCut=horizonCut;R0.maxLayer=maxLayer;R0.dropped=dropped;if(ranForward)R0.forwardMs=(R0.forwardMs||0)+(forwardMs||Date.now()-started);R0.calls=(R0.calls||0)+1;}
   function at(curve,n){
     if(n<=0)return GOAL;if(n<curve[0].from)throw Error('CURVE_RANGE');
     let lo=0,hi=curve.length-1;while(lo<hi){const mid=(lo+hi+1)>>1;if(curve[mid].from<=n)lo=mid;else hi=mid-1;}return curve[lo].pts;
@@ -376,7 +377,7 @@ export function solveTomahawk(model,opts){
     return [...bp].sort((x,y)=>x-y);}
   function finish(curve,lo,hiCut){
     if(hiCut!==null&&hiCut<=rootNeed&&!sameSet(curve[curve.length-1].pts,STOP_LIST))curve.push({from:hiCut,pts:STOP_LIST});
-    segmentsTotal+=curve.length;return curve;}
+    segmentsTotal+=curve.length;segsOwn+=curve.length;return curve;}
   function range(id){
     const lo=minNeed.a[id],a0=actStart.a[id],a1=actStart.a[id+1];
     let hi=rootNeed,hiCut=null;

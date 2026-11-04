@@ -1,6 +1,6 @@
 // ソリティアの画面（毎ターン使う画面）：左に局面（上部の数値の欄、手札、置き場）、右に答え（計算・次の手・プレイの案内）。
 // 札は押して置き場を選ぶ（キー 1:手札 2:保留 3:捨て札 4:除外 0:山札）か、置き場へドラッグする。山札＝デッキ全体−ほかの置き場（自動）。
-import {D, search, itemInputs, staminaTriggered} from './data.js';
+import {D, search, itemInputs, staminaTriggered, hifSharedLimit} from './data.js';
 import {firedOf} from './setup.js';
 import {S, save, uid, deck, newPhase, STANCES} from './store.js';
 import {h, pic, cardTile, popover, num, sel, toast} from './ui.js';
@@ -126,9 +126,18 @@ export function renderTurn(root, rerender) {
         h('small.unsup', {title: '日が差す方へを使うとき、消費体力を0にする効果（レッスン全体で' + lim + '回）'}, '試作・未検証'));
     });
     rows.push(...pre);
+    // HIF 再動（名前ごとに合わせて2回まで）：デッキに HIF の札があるときだけ、これまでに使った回数
+    const hifIds = [...new Set(all.filter(en => en.hif).map(en => D.cardById.get(en.id)?.baseId).filter(Boolean))];
+    for (const bid of hifIds) {
+      const lim = hifSharedLimit(S.calcSettings, bid); if (!lim) continue;
+      const c = D.cardById.get(bid); P.abilityUses ||= {}; const m = (P.abilityUses.HIF ||= {});
+      rows.push(h('div.itemrow', {}, pic('cards', bid, c?.name || '?', 32), h('span.inm', (c?.name || '?') + '（HIF 再動）'),
+        num('これまでに使った回数', m[bid] || 0, v => { m[bid] = Math.max(0, Math.min(lim, v ?? 0)); touch(); }, {min: 0, max: lim, width: 4, hint: '/' + lim}),
+        h('small.unsup', {title: '使ったときに行動+1。同じ名前の HIF の札で合わせて ' + lim + ' 回まで（通常版と＋版は同じ名前として数える）'}, '試作・未検証')));
+    }
     const stamina = dk.items.some(staminaTriggered);
     if (!rows.length && !stamina) return null;
-    return h('div.items', {}, h('h4', pre.length ? 'P アイテム・使った札の効果' : 'P アイテム'), rows,
+    return h('div.items', {}, h('h4', rows.length > dk.items.length || pre.length ? 'P アイテム・札の効果' : 'P アイテム'), rows,
       stamina && h('div.hudrow', {}, field('コストを0にする残り回数', 'nullifyCostCards'),
         h('span.hint', 'ソリティアを始める前に全身全霊+ などを使ったときの、コスト（体力を含む）が0になる残りの回数。残りがある間は、体力が減ったときの効果が発動しません。')),
       perUse && h('p.hint', '熱意倍率の欄には、ゲームの表示の値（発動済みの分の熱意倍率を含む）を入れてください。'));
@@ -157,7 +166,7 @@ export function renderTurn(root, rerender) {
 
   // デッキにない札を足す（眠気など）
   let addQ = '';
-  const resList = () => search(D.cards, addQ || '眠気', 8).map(c => h('button.mini', {onclick: () => { const en = {uid: uid(), id: c.id, c11n: {}, hif: false}; P.extra.push(en); P.zones[en.uid] = 'hand'; toast(c.name + ' を手札に足しました'); touch(); }}, c.name));
+  const resList = () => search(D.cards.filter(c => !c.hidden), addQ || '眠気', 8).map(c => h('button.mini', {onclick: () => { const en = {uid: uid(), id: c.id, c11n: {}, hif: false}; P.extra.push(en); P.zones[en.uid] = 'hand'; toast(c.name + ' を手札に足しました'); touch(); }}, c.name));
   const resBox = h('div.row', {}, resList());
   const addBox = h('details.addextra', {}, h('summary', '＋ デッキにない札を足す（眠気など）'),
     h('input', {type: 'search', placeholder: '名前・略称', oninput: e => { addQ = e.target.value; resBox.replaceChildren(...resList()); }}), resBox);

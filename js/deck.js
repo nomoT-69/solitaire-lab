@@ -67,7 +67,7 @@ export function renderDeck(root, rerender) {
   const planOk = x => x.custom || x.plan === dk.plan || (tab !== 'pidols' && withFree && x.plan === 'free');
   // 並べる順：選んだプラン → フリー、その中はレア度の高い順（SSR・SR・R・N）、同じなら番号の順
   const RANK = {SSR: 0, SR: 1, R: 2, N: 3, T: 4};
-  const list = (tab === 'cards' ? D.cards.filter(c => !c.upgraded && cardOk(c)) : D[tab]).filter(planOk)
+  const list = (tab === 'cards' ? D.cards.filter(c => !c.upgraded && !c.hidden && cardOk(c)) : D[tab]).filter(planOk)
     .map((x, i) => [x, i]).sort(([a, i], [b, j]) => (a.plan === 'free') - (b.plan === 'free') || (RANK[a.rarity] ?? 5) - (RANK[b.rarity] ?? 5) || i - j).map(([x]) => x);
   let res = search(list, query, Infinity);   // 全部出す（前は最初の60件だけだった）
   const add = (kind, x, plus) => {

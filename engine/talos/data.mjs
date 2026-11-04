@@ -54,17 +54,33 @@ export function applyOverrides(data,list=OVERRIDES){
 // シナリオのアビリティ（札1枚ごとに付く。gakumas-tools のデータにはないので、ここで定義する）。
 //   アビリティごとに「効果の組」を並べる。組＝{cards:[通常版の番号…], actions:'DSL'}。札によって効果が違うので、
 //   同じ効果の札を1つの組にまとめ、違う効果の札は別の組として足す（効果は、札の効果の後に実行する）。
-//   HIF（利用者の説明 2026-11-03）：下の5種は同じ効果（使ったときに行動＋1、1枚ドロー）。ほかの札は効果が違うことがある。
+//   HIF（利用者の説明 2026-11-03、2026-11-04 に利用者の表で更新）：札ごとに効果の組が違う（再動＆ドロー・再動・眠気除去・なし）。
 export const ABILITIES={
   HIF:[
-    {cards:[390/*精一杯*/,408/*オープニングアクト*/,749/*アンダンテ*/,418/*カウントダウン*/,422/*忍耐力*/],actions:'cardUsesRemaining+=1; drawCard'},
+    // 再動＆ドロー（行動＋1、1枚ドロー）。2026-11-04：利用者の表（GUI のセッションが照合）で19枚に広げた。通常版・＋版とも同じ効果（利用者の確認）。試作・未検証
+    {cards:[590/*巻き返し*/,745/*ハッスル*/,390/*精一杯*/,392/*ハッピー♪*/,394/*嬉しい誤算*/,396/*涙の思い出*/,386/*ラッキー♪*/,384/*一歩*/,380/*ジャストアピール*/,700/*ノンストップ*/,
+      408/*オープニングアクト*/,749/*アンダンテ*/,418/*カウントダウン*/,422/*忍耐力*/,416/*潜在能力*/,414/*トレーニングの成果*/,404/*はじけるパッション*/,406/*汗と成長*/,412/*理想のテンポ*/,
+      905/*ラッシュ*/,907/*ブースト*/],actions:'cardUsesRemaining+=1; drawCard'},   // 905・907 は 2026-11-04 追加（全力値を使う札で、札そのものの計算は未対応）
+    // 眠気除去（手札以外の眠気を1枚除外。山札と捨て札の眠気すべてから等しい確率で選ぶ。利用者の確認 2026-11-04）。試作・未検証
+    {cards:[698/*形勢逆転*/,546/*セッティング*/,548/*第一印象*/,410/*始まりの笑顔*/,420/*プライド*/,552/*モチベ*/,518/*タフネス*/,594/*達成感*/,550/*トレンドリーダー*/,554/*盛り上げ上手*/,
+      556/*インフルエンサー*/,424/*切磋琢磨*/],actions:'removeRandom[23 & (deck | discarded)]'},
+    // 再動（使ったときに行動＋1。同じ名前の札で合わせて2回まで。利用者の確認 2026-11-04：2枚あっても1枚目・2枚目に使ったときの2回）。試作・未検証
+    //   shared：札ごとではなく名前（通常版の番号 {id}）ごとに1つ登録する効果。残り回数は名前ごとに共有（setup.abilityUses で使った回数を入力）
+    {cards:[382/*スターライト*/,388/*積み重ね*/,400/*せーのっ！*/,402/*アッチェレランド*/],shared:'at:cardUsed[{id} & ability(HIF)] { cardUsesRemaining+=1; limit:2 }'},
+    // HIF アビなし：716・702・718
     // 例：{cards:[番号], actions:'…'}（別の効果の札）
   ],
 };
 // 札（通常版の番号）に付くアビリティの効果（DSL）。付けられなければ null
 // abilities：アビリティの効果の組（利用者の設定。渡さなければ既定の ABILITIES）
 export function abilityActions(name,baseId,abilities=ABILITIES){const A=abilities[name];if(!A)throw Error('未登録のアビリティ: '+name);
-  const hits=A.filter(g=>g.cards.includes(baseId));if(hits.length>1)throw Error(name+' の効果の組が重複しています: '+baseId);return hits[0]?.actions??null;}
+  const hits=A.filter(g=>g.cards.includes(baseId));if(hits.length>1)throw Error(name+' の効果の組が重複しています: '+baseId);return hits[0]?(hits[0].actions??(hits[0].shared?'':null)):null;}
+// 名前ごとに共有する効果（組の shared）を、合成の P アイテム（番号は −1000000−通常版の番号）として data.items に登録して番号を返す。なければ null（2026-11-04、HIF 再動）
+export function sharedAbilityItem(data,name,baseId,abilities=data.abilities??ABILITIES){
+  const g=(abilities[name]||[]).find(g=>g.cards.includes(baseId)&&g.shared);if(!g)return null;
+  const id=-1000000-baseId;if(!data.items.has(id))data.items.set(id,{id,name:name+'：'+(data.cards.get(baseId)?.name??baseId)+'（同じ名前で共有）',plan:'',upgraded:false,sourceType:'ability',pIdolId:null,
+    effects:parseSequence(g.shared.replaceAll('{id}',String(baseId)))});
+  return id;}
 // 札の変種：カスタマイズ（{番号:段階}）とアビリティ（['HIF']）を当てた札。data.cards に文字列のキーで覚える。
 // カスタマイズの扱い（gakumas-tools の customizations.csv）：
 //   actions … 札の actions の後ろに足す（段階 level:N は指定の段階だけ）。名前付きの置き換え（@名前）は未対応（エラー）

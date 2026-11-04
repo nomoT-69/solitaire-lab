@@ -1,8 +1,9 @@
 // 次のターンの局面：プレイでたどった最後の局面（worker.js の turnEndState）から、局面の入力（画面の形）を作る。
 // ゲームのターン終わりの動きに合わせる：手札は捨て札へ。保留・除外・山札・成長・ドリンク・指針・回数・P アイテムと継続効果のカウンタは引き継ぐ。
 // 次のターンに引いた札は、利用者が山札から手札へ動かす。ターンをまたいで変わる数（熱意・倍率・行動回数・目標点など）は、前の入力を残して確かめてもらう。
-import {D, startGrowthOf, itemInputs} from './data.js';
-import {uid, newPhase, STANCES} from './store.js';
+import {D, startGrowthOf, itemInputs, hifSharedLimit} from './data.js';
+const settingsOf = () => S.calcSettings;
+import {S, uid, newPhase, STANCES} from './store.js';
 
 // 札の変種のキー（エンジンの cardVariant と同じ形：番号＋#cカスタマイズ＋#aアビリティ）
 export function variantKey(en) {
@@ -56,6 +57,12 @@ export function buildNextPhase(deck, prev, st, {mid = false} = {}) {
     const r = st.effs.find(x => x.path.startsWith('i:' + id + '.'));
     P.itemState[id] = r ? {counter: r.c, fired: slots.map((x, i) => Number.isInteger(r.l[i]) ? Math.max(0, x.max - r.l[i]) : 0)}
       : {counter: prev.itemState[id]?.counter ?? 0, fired: slots.map(x => x.max)};
+  }
+  // HIF 再動（名前ごとに共有する効果）：合成の P アイテム（番号 −1000000−通常版の番号）の残り回数から、これまでに使った回数＝上限−残り。記録がない＝使い終えた
+  for (const en of entries.filter(e => e.hif)) {
+    const bid = D.cardById.get(en.id)?.baseId, lim = bid && hifSharedLimit(settingsOf(prev), bid); if (!lim) continue;
+    const r = st.effs.find(x => x.path.startsWith('i:' + (-1000000 - bid) + '.'));
+    ((P.abilityUses ||= {}).HIF ||= {})[bid] = r && Number.isInteger(r.l?.[0]) ? Math.max(0, lim - r.l[0]) : lim;
   }
   P.registered = st.effs.filter(x => /^c:-?\d+:a/.test(x.path)).map(x => {
     const card = Number(x.path.match(/^c:(-?\d+)/)[1]), lim = D.cardById.get(card)?.registers?.limit;
