@@ -193,7 +193,8 @@ export function renderTurn(root, rerender) {
       h('div.hudrow', {}, field('温存の回数', 'preservationTimes'), field('強気の回数', 'strengthTimes'), field('のんびりの回数', 'leisureTimes'), field('札の効果での指針変更', 'directStanceTimes')),
       h('h4', '継続効果（使った札が残す効果）'),
       P.registered.map((r, i) => !D.cardById.get(r.card)?.registers?.limit && h('div.itemrow', {}, pic('cards', r.card, D.cardById.get(r.card)?.name || '?', 32), h('span.inm', D.cardById.get(r.card)?.name),
-        num('カウンタ', r.counter, v => { r.counter = v ?? 0; touch(); }, {min: 0, width: 4, hint: '4なら次の札で発動'}),
+        // ゲームの表示（5→4→…→1、1 のときに札を使うと発動）で入れる。計算の部品のカウンタ（0→1→…→4、4 のとき次の札で発動）＝ 5 − 表示
+        num('ゲームの表示', 5 - ((r.counter || 0) % 5), v => { r.counter = 5 - Math.max(1, Math.min(5, v ?? 5)); touch(); }, {min: 1, max: 5, width: 4, hint: '1 なら次の札で発動'}),
         h('button.x', {onclick: () => { P.registered.splice(i, 1); touch(); }}, '×'))),
       h('div.row', {}, D.cards.filter(c => c.registers?.counter).map(c => h('button.mini', {onclick: () => { P.registered.push({card: c.id, counter: 0}); touch(); }}, '＋ ' + c.name))),
       growthBulk(P, all, touch),

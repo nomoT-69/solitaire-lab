@@ -43,7 +43,8 @@ const cells = r => {
     bonus: a.bonus === b.bonus ? b.bonus + '%' : `${sign(b.bonus - a.bonus)}% → ${b.bonus}%`,
     stance: a.stance === b.stance ? (ST[b.stance] || b.stance) : `${ST[a.stance] || a.stance} → ${ST[b.stance] || b.stance}`,
     uses: delta(a.uses, b.uses), drinks: delta(a.drinks, b.drinks), future: pct(r.c.p),
-    regs: (r.e.regs || []).map(g => `${shortName(g.id)} ${g.from}→${g.to ?? '—'}${g.gain ? `（+${fmt(g.gain)}）` : ''}`).join('　')};
+    // 夏夜などのカウンタは、ゲームの表示（5→1、1 のとき次の札で発動）に直して出す（表示＝5 − カウンタ%5）
+    regs: (r.e.regs || []).map(g => `${shortName(g.id)} ${5 - g.from % 5}→${g.to == null ? '—' : 5 - g.to % 5}${g.gain ? `（+${fmt(g.gain)}）` : ''}`).join('　')};
 };
 const shortName = id => (D.cardById.get(id)?.name || '継続効果').replace(/に咲く思い出\+?$/, '');
 const REG_COL = ['regs', '継続効果（火力）'];
