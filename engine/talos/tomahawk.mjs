@@ -135,6 +135,7 @@ export function solveTomahawk(model,opts){
   const extraCmp=(u,v)=>{for(const k of extraDims){const c=cmp(v[k],u[k]);if(c)return c;}return 0;};
   // 階段の方法（P 降順に並べ、前の点に支配されるかを E[D]（3次元なら E[A] も）で調べる）
   const EPS=opts.frontierEps?{p:opts.frontierEps.p??opts.frontierEps,d:opts.frontierEps.d??opts.frontierEps}:null;
+  let epsDropped=0;   // ε で間引いた点の数（外部レビュー2の項目12、2026-11-05：1点でも間引けば最適の証明にならない。続きから（resume）にも持つ）
   function pruneStair(list){
     if(list.length<=1)return list;
     if(fdim==='pd'){
@@ -142,10 +143,10 @@ export function solveTomahawk(model,opts){
       const out=[];let bestD=null;
       for(const u of sorted){if(bestD!==null&&cmp(bestD,u.d)<=0)continue;out.push(u);bestD=u.d;}   // P の大きい点ほど先：前の点より E[D] が小さい点だけ残る
       // opts.frontierEps（試作・測定用、G2 2026-11-05「α の前線が重い件」。既定は無効）：前の残した点との差が P で eps.p 未満かつ E[D] で eps.d 未満の点を捨てる（ε-パレート）。
-      // 残る点はどれも実際の方策の正確な値なので、答えは検証済みの方策のまま（最適との差は1段あたり eps 以内。層の上限の暫定の段だけで使う想定）
+      // 残る点はどれも実際の方策の正確な値なので、答えは検証済みの方策のまま。最適との差は未証明の近似（外部レビュー2の項目13：「1段あたり eps 以内」は成り立たない。1局面で枝を足すたびに間引くため）
       if(EPS&&out.length>1){const th=[out[0]];let lp=toNum(out[0].p),ld=toNum(out[0].d);
         for(let i=1;i<out.length;i++){const u=out[i],p=toNum(u.p),d=toNum(u.d);if(lp-p>=EPS.p||ld-d>=EPS.d){th.push(u);lp=p;ld=d;}}
-        return th;}
+        epsDropped+=out.length-th.length;return th;}
       return out;
     }
     const sorted=list.slice().sort((u,v)=>cmp(v.p,u.p)||cmp(Dv(u),Dv(v))||cmp(Av(u),Av(v))||extraCmp(u,v));
@@ -256,7 +257,7 @@ export function solveTomahawk(model,opts){
   const brChild=G0?.brChild??new Grow(Int32Array),brGain=G0?.brGain??new Grow(Uint32Array),brProb=G0?.brProb??new Grow(Int32Array),pathGain=G0?.pathGain??new Grow(Uint32Array),dropF=G0?.dropF??new Grow(Uint8Array);
   if(R0&&!G0)R0.g={nodeK,minNeed,actStart,actFlag,brStart,brChild,brGain,brProb,pathGain,dropF};
   let curves=null,maxGain=null;
-  const layerCap=opts.layerCap||0;let dropped=R0?.dropped??0;
+  const layerCap=opts.layerCap||0;let dropped=R0?.dropped??0;epsDropped=R0?.epsDropped??0;
   let segsOwn=R0?.segsOwn??0;   // 見積もりのメモリ用：共有の「止める」曲線（LEAF）を除いた、本当にメモリを使う区間の数（続きからでも累計。2026-11-04）
   let transitions=R0?.transitions??0,invarianceChecks=R0?.invarianceChecks??0,horizonCut=R0?.horizonCut??0,peakFrontier=0,segmentsTotal=0,maxLayer=R0?.maxLayer??0,cutNodes=0;
   const heapMiB=()=>globalThis.process?.memoryUsage?.().heapUsed/1048576||0;
@@ -276,7 +277,7 @@ export function solveTomahawk(model,opts){
     if(bx.length!==br.length)throw Error('SCORE_DEPENDENCE');
     for(let i=0;i<br.length;i++){const a=br[i],b=bx[i];if(!sameProb(a,b)||b.s.score-a.s.score!==x||keyOf(a.s)!==keyOf(b.s))throw Error('SCORE_DEPENDENCE');}
   }
-  let pUB=undefined,ubNote=null;let status='complete',reason=null,root=null,forwardMs=0,backwardMs=0,ranForward=false;
+  let pUB=undefined,ubNote=null,pDrop=undefined,rootMs=null;let status='complete',reason=null,root=null,forwardMs=0,backwardMs=0,ranForward=false;
   try{
     if(rootNeed<=0)root=GOAL;
     else if(opts.graph){
@@ -301,6 +302,13 @@ export function solveTomahawk(model,opts){
       const hPop=h=>{const v=h.v[0],i=h.i[0],lv=h.v.pop(),li=h.i.pop();if(h.v.length){h.v[0]=lv;h.i[0]=li;let c=0;for(;;){const l=2*c+1,r=l+1;let m=c;if(l<h.v.length&&h.v[l]<h.v[m])m=l;if(r<h.v.length&&h.v[r]<h.v[m])m=r;if(m===c)break;[h.v[m],h.v[c]]=[h.v[c],h.v[m]];[h.i[m],h.i[c]]=[h.i[c],h.i[m]];c=m;}}return [v,i];};
       // 古い（値が変わった・捨てた）項目を取り除いた最小
       const hMin=(h,next,sc)=>{while(h.v.length&&(next[h.i[0]]===null||sc[h.i[0]]!==h.v[0]))hPop(h);return h.v.length?h.v[0]:-Infinity;};
+      // opts.capReach（測定用、G2 の項目5、2026-11-05）：層の上限で残す状態を到達確率 R の大きい順に選ぶ。R(子)＝Σ_親 R(親)×max_手 p(親→子)（1を超えてよい。順に使うだけ）。続きから（resume）には未対応
+      const reach=opts.capReach?[1]:null;
+      const actEnd=id=>id+1<actStart.n?actStart.a[id+1]:actFlag.n,brEnd=ai=>ai+1<brStart.n?brStart.a[ai+1]:brChild.n;
+      const addReach=(first,len)=>{for(let id=first;id<first+len;id++){const r=reach[id]||0;if(!r)continue;const best=new Map();
+        for(let ai=actStart.a[id];ai<actEnd(id);ai++){const sum=new Map();for(let bi=brStart.a[ai];bi<brEnd(ai);bi++){const c=brChild.a[bi];if(c<0)continue;sum.set(c,(sum.get(c)||0)+toNum(probs[brProb.a[bi]]));}
+          for(const [c,v] of sum)if(v>(best.get(c)||0))best.set(c,v);}
+        for(const [c,v] of best)reach[c]=(reach[c]||0)+r*v;}};
       ranForward=true;let fw=R0?.fw??null;fwRef=fw;
       if(!fw){const s0=W(model.root,0);nodeK.push(maxOps);minNeed.push(rootNeed);pathGain.push(0);dropF.push(0);fw={k:maxOps,li:0,layer:[s0],layerFirst:0,ids:null,next:null,nextFirst:0};if(R0)R0.fw=fw;fwRef=fw;}
       for(;fw.k>=0&&fw.layer.length;fw.k--){
@@ -339,6 +347,7 @@ export function solveTomahawk(model,opts){
             }
           }
         }
+        if(reach)addReach(layerFirst,layer.length);   // 作り終えた層（親）から子へ到達確率を配る
         fw.layer=next;fw.layerFirst=fw.nextFirst;fw.ids=null;fw.next=null;fw.hp=null;fw.sc=null;
         // opts.growthLimit（G2 2026-11-05、利用者の決定。案 A）：層を作り終えたとき「ここまでの状態数 ＋ 今の層の状態数 × 伸び（今の層 ÷ 前の層）」が上限を超えたら、
         // 入りきらない見込みとして早めに止める（GROWTH_LIMIT）。層の上限つきの探索では使わない。ランダム42局面で、解き切れる局面を止める誤り 0件（DESIGN 22.23）
@@ -347,7 +356,7 @@ export function solveTomahawk(model,opts){
         // 展開しない状態は「そこで止める」扱いになるので、得られる方策は実際に打てる手順（値は厳密。最適は未証明）
         const lay=fw.layer,lf=fw.layerFirst;
         // opts.capScore（試作・測定用、G2 の手順3。既定なし）：残す状態を「根からの得点＋この先の見込み」で選ぶ。capScore(状態, 根からの得点) → 大きいほど残す
-        if(layerCap&&lay.length>layerCap&&opts.capScore){const idx=[],sc=new Float64Array(lay.length);for(let i=0;i<lay.length;i++)if(lay[i]!==null){idx.push(i);sc[i]=opts.capScore(lay[i],pathGain.a[lf+i]);}
+        if(layerCap&&lay.length>layerCap&&(opts.capScore||reach)){const idx=[],sc=new Float64Array(lay.length);for(let i=0;i<lay.length;i++)if(lay[i]!==null){idx.push(i);sc[i]=reach?(reach[lf+i]||0):opts.capScore(lay[i],pathGain.a[lf+i]);}
           idx.sort((x,y)=>(sc[y]-sc[x])||(pathGain.a[lf+y]-pathGain.a[lf+x])||(x-y));
           // opts.capMix（0〜1）：上限のうちこの割合は根からの得点の順で先に残し、残りを見込みの順で埋める
           let keep=new Uint8Array(lay.length),kept=0;
@@ -376,7 +385,7 @@ export function solveTomahawk(model,opts){
         if(R0)R0.bid=id;
         if((id&(R0?63:1023))===0&&Date.now()-started>maxMs)throw Error('TIME_LIMIT');
         if((id&1023)===0){if(opts.maxHeapMiB&&heapMiB()>opts.maxHeapMiB)throw Error('MEMORY_LIMIT');if(opts.onEst&&(id&16383)===0)opts.onEst(estParts());if(opts.maxEstMiB&&estMiB()>opts.maxEstMiB)throw Error('MEMORY_LIMIT');}   // 後ろ向きでもメモリの上限を見る（α の前線が大きい局面。2026-11-04）
-        curves[id]=lexMode?rangeLex(id):range(id);progressed=true;
+        const tR=id===0?Date.now():0;curves[id]=lexMode?rangeLex(id):range(id);progressed=true;if(id===0)rootMs=Date.now()-tR;   // 根の組み合わせの時間（測定用、項目8）
       }
       if(R0)R0.bid=-1;
       backwardMs=Date.now()-started-(opts.graph?0:forwardMs);
@@ -384,18 +393,20 @@ export function solveTomahawk(model,opts){
       // 層の上限で展開しなかった状態があるとき：達成率の上限（opts.upperBound:true のとき。既定は計算しない：重い局面では根に近い層で絞るので、ほぼ 1 になり役に立たない）。展開しなかった状態を「必ず届く（P=1）」とみなして、
       // 同じグラフで P だけの最大を後ろ向きに計算する。本当の値はそれ以下なので、どの方策の達成率もこの値を超えない（2026-11-04）
       if(dropped&&opts.upperBound===true){try{pUB=upperP(N);}catch(e){if(e.message!=='TIME_LIMIT')throw e;pUB=null;ubNote='時間切れで上限を計算できなかった';}}
+      // opts.upperBound と一緒に：展開しなかった状態に届く最大の確率（目標に届いた枝は0とみなす。測定用。E[D] の差の見積もりに使う）
+      if(dropped&&opts.upperBound===true&&opts.dropReach){try{pDrop=upperP(N,false);}catch(e){if(e.message!=='TIME_LIMIT')throw e;pDrop=null;}}
     }
   }catch(e){if(!['TIME_LIMIT','STATE_LIMIT','FRONTIER_LIMIT','MEMORY_LIMIT','GROWTH_LIMIT'].includes(e.message))throw e;status='incomplete';reason=e.message;}
-  if(R0){R0.segsOwn=segsOwn;R0.transitions=transitions;R0.invarianceChecks=invarianceChecks;R0.horizonCut=horizonCut;R0.maxLayer=maxLayer;R0.dropped=dropped;if(ranForward)R0.forwardMs=(R0.forwardMs||0)+(forwardMs||Date.now()-started);R0.calls=(R0.calls||0)+1;}
+  if(R0){R0.segsOwn=segsOwn;R0.transitions=transitions;R0.invarianceChecks=invarianceChecks;R0.horizonCut=horizonCut;R0.maxLayer=maxLayer;R0.dropped=dropped;R0.epsDropped=epsDropped;if(ranForward)R0.forwardMs=(R0.forwardMs||0)+(forwardMs||Date.now()-started);R0.calls=(R0.calls||0)+1;}
   function at(curve,n){
     if(n<=0)return GOAL;if(n<curve[0].from)throw Error('CURVE_RANGE');
     let lo=0,hi=curve.length-1;while(lo<hi){const mid=(lo+hi+1)>>1;if(curve[mid].from<=n)lo=mid;else hi=mid-1;}return curve[lo].pts;
   }
   // 必要点の区切り（その行動の値が変わりうる点）
   // 達成率の上限：曲線は [{from, p}]（必要点 from 以上で p）。展開しなかった状態は P=1、手がない状態は P=0
-  function upperP(N){
+  function upperP(N,goalOne=true){const GOALV=goalOne?ONE:ZERO;
     const UB=new Array(N),ONE_C=[{from:1,p:ONE}],ZERO_C=[{from:1,p:ZERO}];
-    const atP=(c,n)=>{if(n<=0)return ONE;let lo=0,hi=c.length-1;while(lo<hi){const mid=(lo+hi+1)>>1;if(c[mid].from<=n)lo=mid;else hi=mid-1;}return c[lo].p;};
+    const atP=(c,n)=>{if(n<=0)return GOALV;let lo=0,hi=c.length-1;while(lo<hi){const mid=(lo+hi+1)>>1;if(c[mid].from<=n)lo=mid;else hi=mid-1;}return c[lo].p;};
     for(let id=N-1;id>=0;id--){
       if((id&1023)===0&&Date.now()-started>maxMs*(opts.upperBoundFrac??1.5))throw Error('TIME_LIMIT');
       const a0=actStart.a[id],a1=actStart.a[id+1];
@@ -406,7 +417,7 @@ export function solveTomahawk(model,opts){
       const ts=[...bp].sort((x,y)=>x-y),cur=[];
       for(const t of ts){let best=ZERO;
         for(let ai=a0;ai<a1;ai++){let p=ZERO;for(let bi=brStart.a[ai];bi<brStart.a[ai+1];bi++){const g=brGain.a[bi],c=brChild.a[bi];
-            const q=g>=t?ONE:atP(UB[c],t-g);if(q.n!==0n)p=add(p,mul(probs[brProb.a[bi]],q));}
+            const q=g>=t?GOALV:atP(UB[c],t-g);if(q.n!==0n)p=add(p,mul(probs[brProb.a[bi]],q));}
           if(cmp(p,best)>0)best=p;}
         if(!cur.length||cmp(cur[cur.length-1].p,best)!==0)cur.push({from:t,p:best});}
       UB[id]=cur;
@@ -478,7 +489,7 @@ export function solveTomahawk(model,opts){
     return finish(curve,lo,hiCut);
   }
   const mem=globalThis.process?.memoryUsage?.();
-  const stats={extrasMode:mode,reduce:reduceX,frontierDims:lexMode?'lex':lexFull?'lex-full':fdim,nodes:nodeK.n,branches:brChild.n,actions:actFlag.n,transitions,invarianceChecks,horizonCut,cutNodes,peakFrontier,segmentsTotal,forwardMs,backwardMs,elapsedMs:Date.now()-started,maxLayer,
+  const stats={rootMs,extrasMode:mode,reduce:reduceX,frontierDims:lexMode?'lex':lexFull?'lex-full':fdim,nodes:nodeK.n,branches:brChild.n,actions:actFlag.n,transitions,invarianceChecks,horizonCut,cutNodes,peakFrontier,segmentsTotal,forwardMs,backwardMs,elapsedMs:Date.now()-started,maxLayer,
     probs:probs.length,engine:E?.stats?.()??null,heapUsedMiB:mem?Math.round(mem.heapUsed/1048576):null};
   // 結果の種類：optimal（最適、証明済み）／incomplete（未完了）。上限で切った状態が0件なら、操作数の上限がなくても最適
   const scopeOf=()=>horizonCut===0?'上限なしでも最適（操作数の上限 '+maxOps+' で切った状態は0件）':'操作数の上限 '+maxOps+' の範囲での最適（上限で切った状態 '+horizonCut+' 件）';
@@ -539,7 +550,11 @@ export function solveTomahawk(model,opts){
       // 方策の DAG は、葉より先に親を出す順（policy-eval は番号で引くので、どの順でもよい）
       return {version:'gas-finite-dag-v1',root:rootIdx,nodes:out,sameEval:{root:rootTies,altNodes,decisionNodes}};
     }
-    return {status,reason,stats,kind:dropped?'restricted':'optimal',kindLabel:dropped?'層の上限で展開を絞った範囲での最良（検証済みの方策、最適は未証明）':'最適（証明済み）',scope:dropped?'層の上限 '+layerCap+' で '+dropped+' 状態を展開しなかった範囲での最良（全体での最適は未証明）':scopeOf(),horizonFree:horizonCut===0,optimalityProven:!dropped,feasible:!!best,ties,alpha:str(alpha),pMaxWithinHorizon:dropped?null:str(pmax),restrictedPMax:dropped?str(pmax):undefined,pUpperBound:pUB===undefined?undefined:pUB===null?null:str(pUB),pUpperBoundNum:pUB?toNum(pUB):pUB,pUpperBoundNote:pUB===undefined?undefined:pUB===null?ubNote:'層の上限で展開しなかった状態を「必ず届く」とみなした上限（操作数の上限 '+maxOps+' の範囲）。どの方策の達成率もこれを超えない',frontierAtRoot:root.length,
+    // 最適の証明：層の上限で状態を捨てていない、かつ ε で前線の点を間引いていない（外部レビュー2の項目12。理由は kindLabel・scope に分けて書く）
+    const approx=dropped||epsDropped;
+    const why=[dropped?'層の上限 '+layerCap+' で '+dropped+' 状態を展開しなかった':null,epsDropped?'前線の点を ε で '+epsDropped+' 点間引いた（近似。最適との差は未証明）':null].filter(Boolean).join('、');
+    const kindLabel=dropped?'層の上限で展開を絞った範囲での最良（検証済みの方策、最適は未証明）':epsDropped?'前線を ε で間引いた近似の最良（検証済みの方策、最適は未証明）':'最適（証明済み）';
+    return {status,reason,stats:{...stats,epsDropped},kind:approx?'restricted':'optimal',kindLabel,scope:approx?why+'範囲での最良（全体での最適は未証明）':scopeOf(),horizonFree:horizonCut===0,optimalityProven:!approx,feasible:!!best,ties,alpha:str(alpha),pMaxWithinHorizon:approx?null:str(pmax),restrictedPMax:approx?str(pmax):undefined,pUpperBound:pUB===undefined?undefined:pUB===null?null:str(pUB),pUpperBoundNum:pUB?toNum(pUB):pUB,...(pDrop!==undefined?{pDropReachNum:pDrop===null?null:toNum(pDrop)}:{}),pUpperBoundNote:pUB===undefined?undefined:pUB===null?ubNote:'層の上限で展開しなかった状態を「必ず届く」とみなした上限（操作数の上限 '+maxOps+' の範囲）。どの方策の達成率もこれを超えない',frontierAtRoot:root.length,
       best:best&&summarize(best),bestRaw:best,frontier:root.map(summarize),frontierRaw:root,lex,extract,summarize,table,follow:p=>follow(p,{s:rootS,id:rootI,path}),retarget,path,maxScore:maxScoreAt(rootS,rootI)};
   }
   // この局面から取りうる最大の最終点（G2、2026-11-04）：グラフの上の正確な最大（maxGain）から。

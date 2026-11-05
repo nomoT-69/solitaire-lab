@@ -1,9 +1,9 @@
 {
  "app": "Solitaire Lab",
- "gui": "1.8.2",
+ "gui": "1.8.3",
  "engine": {
   "name": "Aegis（Tecnai＋Javelin＋Tomahawk）",
-  "commit": "f511f90",
+  "commit": "5caa637",
   "date": "2026-11-05"
  },
  "data": {

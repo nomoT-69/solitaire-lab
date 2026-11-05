@@ -872,7 +872,7 @@ export function createEngine(data,setup,options={}){
   function trimCaches(){for(const B of beliefs){B.draw=null;B.many=null;B.hold=null;B.ins=new Map();}PH_CACHE.clear();beliefCanonCache.clear();}
   // 支配のキー：熱意を除いたキー（heatMono のときだけ。熱意が多いほど良い）
   const domKey=s=>{const h=s.heat;s.heat=0;const k=key(s);s.heat=h;return k;};
-  return {root,choices,transition,key:s=>s.key,types,cfg,withScore,deckOrders,beliefs,canon,fromCanon,canonAct,trimCaches,
+  return {root,choices,transition,key:s=>s.key,types,cfg,defs,withScore,deckOrders,beliefs,canon,fromCanon,canonAct,trimCaches,
     heatMonotone:()=>heatMono,domKey,domVal:s=>s.heat,
     effsOf:s=>effTab[s.effs],ceOf:s=>effTab[s.ce],extraOf:s=>[s.strB,s.cardsUsed,s.turnUsed],isDead:deadRec,stats:()=>({beliefs:beliefs.length,effLists:effTab.length,types:types.length,keyFields:Object.keys(K).filter(f=>K[f])}),
     describe:s=>({hand:ms(s.hand),discard:ms(s.disc),removed:ms(s.rem),held:[...s.held].map(c=>name(c.charCodeAt(0)-BASE)),
