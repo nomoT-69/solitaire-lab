@@ -20,6 +20,7 @@ import * as S from '../engine/talos/settings.mjs';
 import * as Q from '../engine/src/rational.mjs';
 import * as V from '../engine/src/policy-eval.mjs';
 import * as I from '../engine/talos/inspect.mjs';
+import * as ES from '../engine/talos/estimate.mjs';
 
 // エンジンの形の確かめ（足りない関数があれば、計算せずに知らせる）
 const NEED = [[T, 'tecnaiModel'], [T, 'solveTomahawk'], [A, 'solveAegis'], [S, 'loadDataWithSettings'], [S, 'defaultSettings'], [Q, 'R'], [Q, 'parse'], [Q, 'toNum'], [Q, 'str'], [V, 'evalPolicyExact'], [I, 'inspectCards']];
@@ -140,6 +141,19 @@ self.onmessage = e => {
       if (shapeErrors.length) throw Error('エンジンの形が合いません（見つからない関数：' + shapeErrors.join('、') + '）');
       const data = S.loadDataWithSettings(m.csv, m.calcSettings || S.defaultSettings());   // 点検は毎回まっさらなデータで
       post('inspected', {result: I.inspectCards(data, m.ids, m.opts || {})});
+    } catch (err) { post('error', {message: String(err?.message || err)}); }
+    return;
+  }
+  // この局面で取れる点（目標点を決める手がかり）：確率100%で届く最大・50%で届く最大・最大（エンジンの solveTargetTable、層の上限5千＋熱意の見込み）
+  // 受け取る：{type:'targetTable', id, csv, calcSettings, setup} → {type:'targetTable', id, result}
+  if (m.type === 'targetTable') {
+    try {
+      if (typeof T.solveTargetTable !== 'function') throw Error('エンジンの形が合いません（solveTargetTable）');
+      const model = T.tecnaiModel(dataFor(m.csv, m.calcSettings), m.setup, 1);   // 目標点は使わない
+      const t0 = Date.now();
+      const r = T.solveTargetTable(model, {layerCap: 5000, capScore: typeof ES.heatCapScore === 'function' ? ES.heatCapScore(model) : undefined, maxEstMiB: MAX_EST_MIB, quantiles: [0.5], maxMs: m.maxMs || 120000});
+      post('targetTable', {result: {status: r.status, reason: r.reason ?? null, exact: !!r.exact, note: r.note || '', sure: r.sure ?? null, quantiles: r.quantiles || [], max: r.max ?? null,
+        curve: (r.curve || []).slice(0, 400), ms: Date.now() - t0}});
     } catch (err) { post('error', {message: String(err?.message || err)}); }
     return;
   }

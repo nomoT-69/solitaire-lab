@@ -55,6 +55,42 @@ class Grow{constructor(T,n=1<<16){this.T=T;this.a=new T(n);this.n=0;this.u=T===U
 export function prepareTomahawk(model,opts={}){return solveTomahawk({...model,target:Infinity},{...opts,prepare:true,alpha:ONE,cut:false});}
 
 // opts：alpha（有理数）または criterion:'max'、order、extras（'ev','floor'）、extrasMode、frontier（'auto'|'pd'|'pda'）、maxOps、maxStates、maxMs、maxFrontier、checkEvery
+// 目標を決めるための表（G2 2026-11-05、利用者の依頼）：今の局面で「確率100%で届く最大の点」「確率 q 以上で届く最大の点」「取れる最大の点（最良の引き）」と、
+// 目標ごとの最大の達成率の曲線を、目標によらないグラフ1つ（prepareTomahawk）から一度に出す。opts は prepareTomahawk に渡す（layerCap・capScore・maxMs・maxEstMiB など）。
+//  - 100%：sure(v)＝各手で「引きが最悪でも取れる点」の最大（整数で正確）。最大：maxGain（正確）。途中の確率：達成率の曲線（浮動小数、表示用）。
+//  - 層の上限で絞った・操作数の上限で切ったときは exact:false（その範囲で実際に打てる方策の値なので、本当の値はこれ以上）。
+//  - 点は試合の得点（今の得点＋これから得る点）で返す。
+export function solveTargetTable(model,opts={}){
+  const started=Date.now();const qs=opts.quantiles??[0.5];const base=model.root.score||0;
+  const pr=prepareTomahawk(model,opts);
+  if(pr.status!=='prepared')return {status:'incomplete',reason:pr.reason??null,ms:Date.now()-started};
+  const g=pr.graph,N=g.maxGain.length,{actStart,brStart,brChild,brGain,brProb,maxGain}=g;const P=g.probsR.map(toNum);
+  // 1) 確率100%で届く最大（必要点）：引きが最悪でも取れる点の最大
+  const sure=new Float64Array(N);
+  for(let v=N-1;v>=0;v--){let b=0;for(let ai=actStart[v];ai<actStart[v+1];ai++){let w=Infinity;for(let bi=brStart[ai];bi<brStart[ai+1];bi++){const c=brChild[bi];const x=brGain[bi]+(c>=0?sure[c]:0);if(x<w)w=x;}if(w>b)b=w;}sure[v]=b;}
+  // 2) 達成率の曲線：状態ごとに、必要点 t（1〜maxGain）での最大の達成率。区間の始まり（昇順）と値を持ち、最後は maxGain+1 から 0
+  const T=new Array(N),V=new Array(N);
+  const val=(c,t)=>{if(t<=0)return 1;const ts=T[c];if(t>=ts[ts.length-1])return V[c][ts.length-1];let lo=0,hi=ts.length-1;while(lo<hi){const m=(lo+hi+1)>>1;if(ts[m]<=t)lo=m;else hi=m-1;}return V[c][lo];};
+  let segs=0;
+  for(let v=N-1;v>=0;v--){
+    if((v&4095)===0&&opts.maxMs&&Date.now()-started>opts.maxMs*2)return {status:'incomplete',reason:'TIME_LIMIT',ms:Date.now()-started};
+    const hi=maxGain[v];const a0=actStart[v],a1=actStart[v+1];
+    if(a0===a1||hi<1){T[v]=Float64Array.of(1);V[v]=Float64Array.of(0);segs++;continue;}
+    const bp=new Set([1]);
+    for(let bi=brStart[a0];bi<brStart[a1];bi++){const gn=brGain[bi],c=brChild[bi];if(gn+1<=hi)bp.add(gn+1);if(c>=0){const ts=T[c];for(let i=0;i<ts.length;i++){const t=gn+ts[i];if(t>hi)break;if(t>1)bp.add(t);}}}
+    const ts=[...bp].sort((x,y)=>x-y);const outT=[],outV=[];
+    for(const t of ts){let best=0;
+      for(let ai=a0;ai<a1;ai++){let p=0;for(let bi=brStart[ai];bi<brStart[ai+1];bi++){const gn=brGain[bi],c=brChild[bi];p+=P[brProb[bi]]*(t<=gn?1:c>=0?val(c,t-gn):0);}if(p>best)best=p;}
+      if(best>1)best=1;if(!outV.length||Math.abs(outV[outV.length-1]-best)>1e-15){outT.push(t);outV.push(best);}}
+    outT.push(hi+1);outV.push(0);T[v]=Float64Array.from(outT);V[v]=Float64Array.from(outV);segs+=outT.length;
+  }
+  const curve=[];for(let i=0;i<T[0].length;i++)curve.push({score:base+T[0][i],p:V[0][i]});   // この点以上を目標にすると、次の点の手前まで最大の達成率は p
+  const maxNeedWith=q=>{let r=null;const ts=T[0],vs=V[0];for(let i=0;i<ts.length;i++)if(vs[i]>=q-1e-12)r=(i+1<ts.length?ts[i+1]-1:null);return r;};
+  const exact=!(pr.stats.dropped>0)&&!(pr.stats.horizonCut>0);
+  return {status:'complete',exact,note:exact?'正確':'層の上限・操作数の上限の範囲での値（実際に打てる方策の値。本当の値はこれ以上）',
+    sure:sure[0]>=1?base+sure[0]:null,max:base+maxGain[0],quantiles:qs.map(q=>{const n=maxNeedWith(q);return {p:q,score:n!==null&&n>=1?base+n:null};}),
+    curve,ms:Date.now()-started,stats:{nodes:N,segments:segs,forwardMs:g.forwardMs,dropped:pr.stats.dropped,horizonCut:pr.stats.horizonCut}};
+}
 export function solveTomahawk(model,opts){
   const {maxOps=24,maxStates=2e7,maxMs=600000,maxFrontier=200000,order=DEFAULT_ORDER,checkEvery=97,extras=[],extrasMode='auto',criterion=null,frontier='auto',cut=true}=opts;
   let alpha=opts.alpha??null;
@@ -98,12 +134,18 @@ export function solveTomahawk(model,opts){
   const dominates=(u,v,ds)=>ds.every(k=>better(u,v,k)>=0);
   const extraCmp=(u,v)=>{for(const k of extraDims){const c=cmp(v[k],u[k]);if(c)return c;}return 0;};
   // 階段の方法（P 降順に並べ、前の点に支配されるかを E[D]（3次元なら E[A] も）で調べる）
+  const EPS=opts.frontierEps?{p:opts.frontierEps.p??opts.frontierEps,d:opts.frontierEps.d??opts.frontierEps}:null;
   function pruneStair(list){
     if(list.length<=1)return list;
     if(fdim==='pd'){
       const sorted=list.slice().sort((u,v)=>cmp(v.p,u.p)||cmp(u.d,v.d)||cmp(u.a,v.a)||extraCmp(u,v));
       const out=[];let bestD=null;
       for(const u of sorted){if(bestD!==null&&cmp(bestD,u.d)<=0)continue;out.push(u);bestD=u.d;}   // P の大きい点ほど先：前の点より E[D] が小さい点だけ残る
+      // opts.frontierEps（試作・測定用、G2 2026-11-05「α の前線が重い件」。既定は無効）：前の残した点との差が P で eps.p 未満かつ E[D] で eps.d 未満の点を捨てる（ε-パレート）。
+      // 残る点はどれも実際の方策の正確な値なので、答えは検証済みの方策のまま（最適との差は1段あたり eps 以内。層の上限の暫定の段だけで使う想定）
+      if(EPS&&out.length>1){const th=[out[0]];let lp=toNum(out[0].p),ld=toNum(out[0].d);
+        for(let i=1;i<out.length;i++){const u=out[i],p=toNum(u.p),d=toNum(u.d);if(lp-p>=EPS.p||ld-d>=EPS.d){th.push(u);lp=p;ld=d;}}
+        return th;}
       return out;
     }
     const sorted=list.slice().sort((u,v)=>cmp(v.p,u.p)||cmp(Dv(u),Dv(v))||cmp(Av(u),Av(v))||extraCmp(u,v));
@@ -326,7 +368,7 @@ export function solveTomahawk(model,opts){
       for(let id=N-1;id>=0;id--){let m=0;for(let ai=actStart.a[id];ai<actStart.a[id+1];ai++)for(let bi=brStart.a[ai];bi<brStart.a[ai+1];bi++){const c=brChild.a[bi];const v=brGain.a[bi]+(c>=0?maxGain[c]:0);if(v>m)m=v;}maxGain[id]=m;}}
       if(prepare){const sl=(g,T)=>g.a.slice(0,g.n);
         return {graph:{nodeK:sl(nodeK),pathGain:sl(pathGain),actStart:sl(actStart),actFlag:sl(actFlag),brStart:sl(brStart),brChild:sl(brChild),brGain:sl(brGain),brProb:sl(brProb),
-          probsR:probs.slice(),maxGain,forwardMs,stats:{transitions,invarianceChecks,horizonCut,maxLayer}},status:'prepared',stats:{nodes:N,transitions,forwardMs}};}
+          probsR:probs.slice(),maxGain,forwardMs,stats:{transitions,invarianceChecks,horizonCut,maxLayer,dropped}},status:'prepared',stats:{nodes:N,transitions,forwardMs,dropped,horizonCut}};}
       // 3) 後ろ向き
       // 続きから：後ろ向きも、止まった番号から続ける（R0.curves・R0.bid）
       curves=R0?.curves??new Array(N);let id0=R0?.bid??N-1;if(R0)R0.curves=curves;

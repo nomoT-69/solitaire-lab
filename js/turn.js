@@ -3,12 +3,16 @@
 import {D, search, itemInputs, staminaTriggered, hifSharedLimit} from './data.js';
 import {firedOf} from './setup.js';
 import {S, save, uid, deck, newPhase, STANCES} from './store.js';
-import {h, pic, cardTile, popover, num, sel, toast} from './ui.js';
+import {h, pic, cardTile, popover, num, sel, toast, qtip} from './ui.js';
 import {ensurePhase, entries, zoneOf, growthOf, extraGrowth, setAssume, ZONES, ZNAME, MAX_DRINKS, growthBulk} from './phase.js';
 import {renderAnswer, isStale} from './answer.js';
 import {renderSteps} from './steps.js';
+import {currentSetup} from './run.js';
+import {startTargetTable, cancelTargetTable} from './solver.js';
 
 let showMore = false;
+// この局面で取れる点（目標点を決める手がかり）。sig＝調べた局面（目標点を除く）の印。局面を変えたら古い値と分かるように
+let TT = {running: false, result: null, error: null, sig: null, started: 0, showCurve: false}, ttRerender = () => {};
 
 export function renderTurn(root, rerender) {
   const dk = deck();
@@ -70,25 +74,38 @@ export function renderTurn(root, rerender) {
 
   // ---- 上部の数値の欄（ゲームの画面の上のほうにあるもの）----
   const setp = k => v => { p[k] = v; touch(); };
-  const stepper = (label, k, {min = 0, max = 99} = {}) => h('div.stepper', {}, h('span.sl', label),
+  const stepper = (label, k, {min = 0, max = 99, tip = ''} = {}) => h('div.stepper', {}, h('span.sl', label, tip && qtip(tip)),
     h('div.sb', {}, h('button', {disabled: p[k] <= min, onclick: () => { p[k] = Math.max(min, (p[k] || 0) - 1); touch(); }}, '−'),
       h('b', p[k] ?? 0), h('button', {disabled: p[k] >= max, onclick: () => { p[k] = Math.min(max, (p[k] || 0) + 1); touch(); }}, '＋')));
   // pct：画面では％で入れ、保存と計算は倍率のまま（例：試験倍率 4426% ⇔ 44.26）
   // plus：ゲームの表示と同じ「＋何%」（増える分）で入れる（例：熱意倍率 ＋180% ⇔ ×2.8）
   const toView = (v, {pct, plus}) => v === null || v === undefined ? '' : plus ? +((v - 1) * 100).toFixed(4) : pct ? +(v * 100).toFixed(4) : v;
   const fromView = (x, {pct, plus}) => x === '' ? null : plus ? 1 + Number(x) / 100 : pct ? Number(x) / 100 : Number(x);
-  const field = (label, k, {step = 1, width = 6, cls = '', pct = false, plus = false} = {}) => h('label.hf', {class: cls}, h('span.sl', label),
+  const field = (label, k, {step = 1, width = 6, cls = '', pct = false, plus = false, tip = ''} = {}) => h('label.hf', {class: cls}, h('span.sl', label, tip && qtip(tip)),
     h('span.unitwrap', {}, plus && h('span.unit', '＋'), h('input', {type: 'number', step, value: toView(p[k], {pct, plus}), style: {width: width + 'em'},
       onchange: e => setp(k)(fromView(e.target.value, {pct, plus}))}), (pct || plus) && h('span.unit', '%')));
   const drinkCount = id => P.drinksHeld.filter(x => x === id).length;
   const hud = h('section.panel.hud', {},
     h('div.hudrow', {},
-      h('div.stances', {}, h('span.sl', '指針'), h('div.seg', {}, STANCES.map(([v, t]) => h('button', {class: 'st ' + v + (p.stance === v ? ' on' : ''), onclick: () => setp('stance')(v)}, t)))),
-      stepper('行動回数', 'cardUses', {min: 1, max: 20}),
-      field('目標点', 'target', {width: 9, cls: 'big'})),
+      h('div.stances', {}, h('span.sl', '指針', qtip('ゲームの画面の、今の指針。温存・強気の「2段階」は、指針の段階が2のとき')), h('div.seg', {}, STANCES.map(([v, t]) => h('button', {class: 'st ' + v + (p.stance === v ? ' on' : ''), onclick: () => setp('stance')(v)}, t)))),
+      stepper('行動回数', 'cardUses', {min: 1, max: 20, tip: 'このターンに、まだ札を使える回数（ゲームの画面のスキルカード使用数）'}),
+      field('目標点', 'target', {width: 9, cls: 'big', tip: 'このターンで届かせたい点数。プレイの途中から作った局面では、それまでに入った点を引いた値'}),
+      h('div.ttbtn', {}, TT.running
+        ? h('button', {onclick: () => { cancelTargetTable(); TT = {...TT, running: false, error: '中止しました'}; rerender(); }}, `取れる点を調べています…（${Math.round((Date.now() - TT.started) / 1000)}秒）中止`)
+        : h('button', {title: 'この局面で、確率100%で届く最大の点・50%で届く最大の点・最大の点を調べます（重い局面で十数秒）', onclick: () => {
+            let s; try { s = currentSetup(); } catch (e) { TT = {...TT, error: '局面を読み込めません：' + e.message}; rerender(); return; }
+            TT = {running: true, result: null, error: null, sig: JSON.stringify(s.setup), started: Date.now(), showCurve: false}; ttRerender = rerender; rerender();
+            const tick = setInterval(() => { if (!TT.running) clearInterval(tick); else ttRerender(); }, 1000);
+            startTargetTable({setup: s.setup, calcSettings: S.calcSettings}, {
+              done: r => { TT = {...TT, running: false, result: r}; ttRerender(); },
+              error: m => { TT = {...TT, running: false, error: m}; ttRerender(); }});
+          }}, 'この局面で取れる点を調べる'))),
+    targetBox(),
     h('div.hudrow', {},
-      field('熱意', 'enthusiasm'), field('熱意追加', 'enthusiasmBonus'), field('熱意倍率', 'enthusiasmBuff', {step: 10, plus: true}), field('試験倍率', 'trial', {step: 1, pct: true}),
-      h('div.drinks', {}, h('span.sl', `ドリンク ${P.drinksHeld.length}/${MAX_DRINKS}`),
+      field('熱意', 'enthusiasm', {tip: 'ゲームの画面の、今の熱意の値'}), field('熱意追加', 'enthusiasmBonus', {tip: 'ゲームの画面の、熱意追加の値'}),
+      field('熱意倍率', 'enthusiasmBuff', {step: 10, plus: true, tip: 'ゲームの表示の「＋何%」をそのまま入れる（P アイテムなどで上がった分も含む）'}),
+      field('試験倍率', 'trial', {step: 1, pct: true, tip: '試験全体の倍率（%）。例：4426'}),
+      h('div.drinks', {}, h('span.sl', `ドリンク ${P.drinksHeld.length}/${MAX_DRINKS}`, qtip(`今持っているドリンク。＋・−で本数を変える（持てるのは${MAX_DRINKS}本まで）`)),
         dk.drinks.length ? h('div.dchips', dk.drinks.map(id => { const d = D.drinks.find(x => x.id === id); const n = drinkCount(id);
           return h('span.dchip', {class: n ? 'on' : '', title: d?.name},
             pic('drinks', id, d?.name || '?', 28), h('span.dn', d?.name),
@@ -98,6 +115,31 @@ export function renderTurn(root, rerender) {
     itemBox(),
     h('button.more', {onclick: () => { showMore = !showMore; rerender(); }}, (showMore ? '▾' : '▸') + ' 詳しい条件（直前の指針・回数・継続効果・成長・前の局面）'),
     showMore && moreBox());
+
+  // この局面で取れる点の結果。数字を押すと、その点を目標点に入れる
+  function targetBox() {
+    if (TT.error && !TT.result) return h('p.warnline', '取れる点を調べられませんでした：' + TT.error);
+    const r = TT.result; if (!r) return null;
+    let sig = null; try { sig = JSON.stringify(currentSetup().setup); } catch {}
+    const old = sig !== TT.sig;
+    if (r.status !== 'complete' && r.sure == null && r.max == null) return h('p.warnline', '時間内に調べ終わりませんでした（' + (r.reason || '') + '）');
+    const more = r.exact ? '' : '以上';
+    const pt = (label, v, tip) => v == null ? h('span.ttv.none', label + '：なし')
+      : h('button.ttv', {title: tip + '。押すと、この点を目標点に入れます', onclick: () => { p.target = v; TT.picked = {v, exact: !!r.exact, label}; touch(); }}, label + ' ', h('b', v.toLocaleString('ja-JP') + '点'), more);
+    const q50 = (r.quantiles || []).find(q => q.p === 0.5);
+    return h('div.ttbox', {class: old ? 'old' : ''},
+      h('div.row', {},
+        pt('確率100%で届く最大', r.sure, '引きが一番悪くても届く点'),
+        pt('50%で届く最大', q50?.score ?? null, '達成率50%以上で届く一番高い点'),
+        pt('最大', r.max, '一番よい引きのときに取れる点'),
+        h('span.hint', `${(r.ms / 1000).toFixed(1)}秒` + (r.exact ? '' : '・計算を絞った範囲での値（本当はこれ以上のことがある）'))),
+      old && h('p.hint', '局面を変えました。この値は前の局面のものです。'),
+      // 押して目標点に入れた値が、計算を絞った範囲の値（厳密でない）なら、その旨を出す。目標点を手で書き換えたら消える
+      TT.picked && !TT.picked.exact && p.target === TT.picked.v && h('p.warnline.ttpicked', `目標点 ${TT.picked.v.toLocaleString('ja-JP')}点（${TT.picked.label}）は、計算を絞った範囲での値です。本当の値はこれより高いことがあります。`),
+      (r.curve || []).length > 1 && h('details.ttcurve', {open: TT.showCurve, ontoggle: e => { TT.showCurve = e.target.open; }}, h('summary', '目標点ごとの、届く確率（最大）'),
+        h('table.tbl.narrow', {}, h('thead', h('tr', h('th', '目標点'), h('th', '届く確率'))),
+          h('tbody', r.curve.map((c, i) => { const nx = r.curve[i + 1]; return h('tr', h('td.n', nx ? `${c.score.toLocaleString('ja-JP')}〜${(nx.score - 1).toLocaleString('ja-JP')}` : `${c.score.toLocaleString('ja-JP')}〜`), h('td.n', (Math.round(c.p * 10000) / 100) + '%' + (r.exact ? '' : ' 以上'))); })))));
+  }
 
   // P アイテムの入力欄：デッキの P アイテムのうち、入力の要るもの（発動済みの回数・カウンタ。エンジンの pItemInputs）と、試作・未対応の注記があるものだけ出す
   function itemBox() {
@@ -112,6 +154,7 @@ export function renderTurn(root, rerender) {
       const setFired = (i, v) => { st.fired = slots.map((y, j) => j === i ? Math.max(0, Math.min(y.max, v ?? 0)) : firedOf(st, j, y.max)); delete st.remaining; touch(); };
       return h('div.itemrow', {}, pic('items', id, it?.name || '?', 32), h('span.inm', it?.name),
         slots.map((x, i) => num(slots.length > 1 ? `発動済みの回数（${i + 1}）` : '発動済みの回数', firedOf(st, i, x.max), v => setFired(i, v), {min: 0, max: x.max, width: 4, hint: '/' + x.max})),
+        slots.length ? qtip('ソリティアを始めるまでに、この P アイテムの効果が発動した回数（上限まで発動したら、それ以上は発動しない）') : null,
         hasCounter && num('カウンタ', st.counter, v => { st.counter = v ?? 0; touch(); }, {min: 0, width: 4}),
         inf?.note && h('small.unsup', {title: inf.note}, '試作・未検証'),
         slots.some(x => x.enthusiasmBuffPerUse) && firedOf(st, 0, slots[0].max) > 0 && h('small.hint', `発動した分（＋${Math.round(slots.reduce((a, x, i) => a + (x.enthusiasmBuffPerUse || 0) * firedOf(st, i, x.max), 0) * 100)}%）は、ゲームの熱意倍率の表示に入っています。計算では足しません`),
@@ -175,11 +218,24 @@ export function renderTurn(root, rerender) {
     h('div.row', {}, h('b', P.carry.mid ? 'プレイの途中から作った局面です' : '前のターンの続きから作った局面です'), h('button.mini', {onclick: () => { delete P.carry; touch(); }}, '閉じる')),
     h('ul', {}, P.carry.warns.map(w => h('li.warn', w)), P.carry.notes.map(n => h('li', n))));
 
+  // 置き場：札のある置き場は枠で出し、空の置き場（保留・山札・捨て札・除外）は1行の小さな受け口にまとめる（ドラッグで入れられる）
+  const count = k => all.filter(e => zoneOf(P, e.uid) === k).length;
+  const miniZone = (k, title) => {
+    const box = h('div.zone.mini', {class: k, 'data-zone': k, title: title + 'は空です。札をここへドラッグするか、札を押して「' + title + 'へ」'}, h('b', title), h('span.cnt', '0'));
+    box.addEventListener('dragover', e => { e.preventDefault(); box.classList.add('dragover'); });
+    box.addEventListener('dragleave', () => box.classList.remove('dragover'));
+    box.addEventListener('drop', e => { e.preventDefault(); box.classList.remove('dragover'); const u = e.dataTransfer.getData('text/plain'); if (u) move(u, k); });
+    return box;
+  };
+  const empties = [['held', '保留'], ['deck', '山札'], ['discard', '捨て札'], ['removed', '除外']].filter(([k]) => !count(k));
+  const isEmpty = k => empties.some(x => x[0] === k);
+  const piles = [['discard', '捨て札'], ['removed', '除外']].filter(([k]) => !isEmpty(k));
   const left = h('div.turnleft', {}, carry, hud,
     h('section.panel.board', {},
-      h('div.handrow', {}, zoneBox('hand', '手札', {size: 'large', limit: 5}), zoneBox('held', '保留', {size: 'small', limit: 2})),
-      zoneBox('deck', '山札', {hint: '＝デッキ全体 − ほかの置き場（自動）。札を押して「手札へ」'}),
-      h('div.pilerow', {}, zoneBox('discard', '捨て札'), zoneBox('removed', '除外')),
+      isEmpty('held') ? zoneBox('hand', '手札', {size: 'large', limit: 5}) : h('div.handrow', {}, zoneBox('hand', '手札', {size: 'large', limit: 5}), zoneBox('held', '保留', {size: 'small', limit: 2})),
+      !isEmpty('deck') && zoneBox('deck', '山札', {hint: '＝デッキ全体 − ほかの置き場（自動）。札を押して「手札へ」'}),
+      piles.length ? h('div.pilerow', {class: piles.length === 1 ? 'one' : ''}, piles.map(([k, t]) => zoneBox(k, t))) : null,
+      empties.length ? h('div.emptyzones', {}, h('span.sl', '空の置き場'), empties.map(([k, t]) => miniZone(k, t))) : null,
       addBox,
       h('p.hint', '札を押すと置き場を選べます（キー 1:手札 2:保留 3:捨て札 4:除外 0:山札）。ドラッグでも動かせます。')));
   const right = h('aside.answer', {});

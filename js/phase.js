@@ -1,5 +1,6 @@
 // 局面の部品（画面は turn.js）：局面の用意、札の置き場、成長の前提、入力の確かめ、成長をまとめて入れる。山札＝デッキ全体−ほかの置き場（自動）
-import {D, checkCalcSettings, unsupported} from './data.js';
+import {D, checkCalcSettings, unsupported, itemInputs} from './data.js';
+import {firedOf} from './setup.js';
 import {S, save, deck, newPhase, defaultParams} from './store.js';
 import {h, num, sel} from './ui.js';
 
@@ -49,6 +50,13 @@ export function validate(dk, P) {
   if (!(p.trial > 0)) err('試験倍率は0%より大きくしてください');
   if (cnt('deck') === 0 && cnt('discard') === 0) info('山札も捨て札も0枚なので、札を引けません');
   for (const id of dk.items) if (/strengthTimes>=4/.test(D.items.find(x => x.id === id)?.text || '') && p.strengthTimes < 4) info(`${D.items.find(x => x.id === id).name}：強気の回数が ${p.strengthTimes} 回なので、まだ発動しません（4回以上で発動）`);
+  // 入力の食い違い：熱意倍率を上げる P アイテム（原点へのチケットなど）が発動済みなのに、熱意倍率がその分より小さい
+  for (const id of dk.items) {
+    const inf = itemInputs(id); if (!inf) continue;
+    const st = P.itemState?.[id] || {};
+    const add = inf.inputs.filter(x => x.key === 'fired').reduce((a, x, i) => a + (x.enthusiasmBuffPerUse || 0) * firedOf(st, i, x.max), 0);
+    if (add > 0 && (p.enthusiasmBuff ?? 1) + 1e-9 < 1 + add) warn(`${inf.name}：発動済みの分だけで熱意倍率が＋${Math.round(add * 100)}% になるはずですが、熱意倍率が＋${Math.round(((p.enthusiasmBuff ?? 1) - 1) * 100)}% です（ゲームの表示の値を入れてください）`);
+  }
   return out;
 }
 

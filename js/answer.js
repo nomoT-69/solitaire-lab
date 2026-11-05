@@ -151,20 +151,14 @@ function resultView(R, rerender, {checkList} = {}) {
       h('p.hint', '引いた札が決まったら「ここから局面を作る」で計算し直すと、最善の手が分かることがあります。「詳しい条件」でドリンクの上限を入れると、計算が軽くなります。'))); }
     else add(h('div.budget', {},
       b && b.pNum === 0 ? h('p.warnline', 'この予算の中では、目標点に届く手順がまだ見つかっていません（届かないと決まったわけではありません）。下のボタンで見つかることがあります。')
-        : h('p.hint', '時間内に見つけた答えです。もっと良い答えがあるかもしれません。'),
+        : h('p.hint', '時間内に見つけた答えです。もっと良い答えがあるかもしれません（計算の時間は「設定 ▾」→「設定」で変えられます）。'),
       resumeOk
         ? h('button.wide', {disabled: !!checkList?.querySelector?.('.err'), onclick: () => resumeRun(addSec)}, `続きから計算する（＋${addSec}秒。ここまでの計算を使う）`)
         : h('button.wide', {disabled: !!checkList?.querySelector?.('.err'), onclick: () => recompute({budgetSec: sec, maxStates: states}, {keep: true})}, `予算を2倍にして計算し直す（${sec}秒・状態 ${fmt(states)}）`),
       !resumeOk && R.resumeReason && h('p.hint', '続きからはできません：' + R.resumeReason),
-      R.resumedSec ? h('p.hint', `ここまでの計算：${R.budgetSec}秒（うち続きから ${R.resumedSec}秒）`) : null,
-      h('p.hint', 'いつもの予算は「設定」で変えられます。')));
+      R.resumedSec ? h('p.hint', `ここまでの計算：${R.budgetSec}秒（うち続きから ${R.resumedSec}秒）`) : null));
   }
 
-  // 同じ評価の手順（短く）
-  const se = R.sameEval;
-  if (se && (se.root > 1 || se.altNodes > 0)) add(h('div.same', {},
-    se.root > 1 && h('div', `今の局面で、同じ評価の手が ${se.root} 通りあります。`),
-    se.altNodes > 0 && h('div', `同じ評価の別の手順があります（${se.altNodes} か所）。` + (R.extras?.length ? '' : '自然さで選ぶ場合は、設定で自然さにチェックを入れてください。'))));
 
   // 詳しく
   if (R.tree) add(h('button.wide.stepsbtn', {onclick: () => { S.ui.steps = !S.ui.steps; save(); rerender(); if (S.ui.steps) setTimeout(() => document.getElementById('steps')?.scrollIntoView({behavior: 'smooth'}), 50); }},
@@ -196,7 +190,12 @@ function details(R, kind, stName, stCls) {
   const b = R.best, T = R.table, n = R.natural;
   const rows = [...(T?.rows || []).map(r => ({...r, cur: R.criterion !== 'max' && r.alpha === R.criterion + '%'})),
     ...(R.criterion === 'max' && b ? [{alpha: '届く最大', best: b, next: R.next, cur: true}] : [])];
+  const se = R.sameEval;
   return h('div.details', {},
+    // 同じ評価の手順（前は答えの欄に出していた。1.6.0 から「詳しく」に）
+    se && (se.root > 1 || se.altNodes > 0) && h('div.same', {},
+      se.root > 1 && h('div', `今の局面で、同じ評価の手が ${se.root} 通りあります。`),
+      se.altNodes > 0 && h('div', `同じ評価の別の手順があります（${se.altNodes} か所）。` + (R.extras?.length ? '' : '自然さで選ぶ場合は、設定で自然さにチェックを入れてください。'))),
     h('h3', '達成率ごとの比較'),
     h('table.tbl', {}, h('thead', h('tr', ['基準', '達成率', 'ドリンク', '操作', '次の手'].map(t => h('th', t)))),
       h('tbody', rows.map(r => h('tr', {class: r.cur ? 'cur' : ''}, h('td', r.alpha),

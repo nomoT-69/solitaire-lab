@@ -90,3 +90,6 @@ export const sel = (label, value, options, onchange) =>
     options.map(([v, t]) => h('option', {value: v, selected: String(v) === String(value)}, t))));
 
 export const fmt = n => n === null || n === undefined ? '—' : Number(n).toLocaleString('ja-JP');
+
+// 入力の欄の横の「？」：触れる（マウスを乗せる・キーで選ぶ）と、何を入れるかが出る
+export const qtip = text => h('span.qtip', {title: text, tabIndex: 0, 'aria-label': text, role: 'note'}, '?');

@@ -39,7 +39,12 @@ const capStages=(opts,list)=>{const cs=list.map(c=>typeof c==='number'?c:c.cap);
 // opts.growthStop:false で使わない。Tomahawk の opts.growthLimit に渡す
 const growthLimitOf=(opts,maxStates)=>{if(opts.growthStop===false)return undefined;const mem=opts.maxEstMiB??opts.maxHeapMiB;
   const byMem=mem?Math.floor(mem*1048576/(opts.growthBytes??600)):Infinity;const g=Math.min(maxStates??2e7,byMem);return Number.isFinite(g)?g:undefined;};
-const capOpts=(model,opts,st)=>({layerCap:st.cap,capScore:st.heat?heatCapScore(model,opts.capHeatLambda??8):undefined});
+// α の前線の間引き（G2 2026-11-05、利用者の決定。DESIGN 22.26）：α を決めた比較の層の上限の段（暫定）は、前線を ε（既定 1e-3、opts.capFrontierEps。0 で間引かない）で間引く。
+// 残る点は実際の方策の正確な値。各局面で達成率が最大の点は必ず残るので、α=100% の答えは変わらない。届く最大の基準（辞書式）には関係しない。厳密に解く段では使わない
+const capOpts=(model,opts,st)=>({layerCap:st.cap,capScore:st.heat?heatCapScore(model,opts.capHeatLambda??8):undefined,
+  ...(opts.criterion!=='max'&&(opts.capFrontierEps??1e-3)?{frontierEps:opts.capFrontierEps??1e-3}:{})});
+// α のときの見込みの段：前は「達成率最大」で解いた（α の前線が重かったため。22.4）。間引きで軽くなったので α の前線で解く。opts.alphaHeatMax:true で前の動き
+const heatAsMax=(opts,st,crit)=>st.heat&&!crit&&opts.alphaHeatMax===true;
 // opts.beamHeat（G2 2026-11-04、設計案の検証2。利用者の決定で既定 8、0 で前の順）：暫定の答えを作る Javelin の上位1〜3手の探索で、手の順に熱意の見込み（λ）を使う。厳密な Javelin は今の順のまま
 // opts.beamMaxMemo（既定 10万）：上位1〜3手の探索で覚える局面の数の上限。1局面 4〜22KB なので、ブラウザ（メモリを測れない）でも約0.4〜2GB で止まる（上位1手は1〜3万局面で終わる）
 const capLabel=st=>st.cap+(st.heat?'・熱意の見込み':'');
@@ -89,7 +94,7 @@ export function solveAegis(model,opts={}){
       const im=improvePolicy(model,prov.extract(),{...opts,maxMs:left(),onUpdate:onUpdate?u=>onUpdate({...finish(prov,false),best:summarizeV(u.value),improvedDag:u.dag}):null});
       trials.push({solver:'部分改善（Javelin）',status:'complete',ms:Date.now()-t0,best:[im.best.p,im.best.d,im.best.a],replaced:im.stats.replaced,tried:im.stats.tried});
       if(im.stats.replaced){const dag=im.dag;prov={...prov,best:im.best,bestRaw:toRaw(im.value),extract:()=>dag,solver:'部分改善（Javelin）'};}}
-  }else for(const st of capsLeft){if(left()<=0)break;if(st.cap>=memStop)continue;const done=tryCap(st,left(),st.heat&&!crit);if(done)return done;}
+  }else for(const st of capsLeft){if(left()<=0)break;if(st.cap>=memStop)continue;const done=tryCap(st,left(),heatAsMax(opts,st,crit));if(done)return done;}
   if(!prov)return {status:'incomplete',reason:'TIME_LIMIT',kind:'incomplete',kindLabel:'未完了',trials,stats:{elapsedMs:Date.now()-started}};
   return finish(prov,true);
 }
@@ -157,7 +162,7 @@ export function createAegisJob(model,opts={}){
     // 4) 残りの時間で、層の上限を広げて暫定を良くする（続きから）
     const C=J.cap;C.stop??=Infinity;
     while(C.idx<caps.length&&left()>0){if(caps[C.idx].cap>=C.stop){C.idx++;C.res={};continue;}   // メモリの上限に当たった上限以上の段は試さない
-      const x=tryCap(caps[C.idx],C.res,left(),caps[C.idx].heat&&!crit);if(x==='final')return done();if(x==='more')break;if(x==='stop'){C.stop=Math.min(C.stop,caps[C.idx].cap);}C.idx++;C.res={};}
+      const x=tryCap(caps[C.idx],C.res,left(),heatAsMax(opts,caps[C.idx],crit));if(x==='final')return done();if(x==='more')break;if(x==='stop'){C.stop=Math.min(C.stop,caps[C.idx].cap);}C.idx++;C.res={};}
     J.totalMs+=Date.now()-started;
     if(!J.prov)return out({status:'incomplete',reason:'TIME_LIMIT',kind:'incomplete',kindLabel:'未完了',trials:J.trials.slice(),stats:{elapsedMs:Date.now()-started}});
     return out(finish(J.prov));

@@ -34,6 +34,9 @@ const itemsMap = () => new Map(D.items.map(x => [x.id, x]));
 // 局面の setup に使う P アイテムの情報（入力欄と、体力が減ったら発動するか）。デッキの P アイテムだけ
 export const itemsFor = dk => { const m = itemsMap(); for (const id of dk?.items || []) { const x = m.get(id); if (x) m.set(id, {...x, inputs: itemInputs(id)?.inputs || null, stamina: staminaTriggered(id)}); } return m; };
 
+// 今の局面の setup と目標点（この局面で取れる点を調べるときなど）
+export function currentSetup(P = S.phase) { return buildSetup({deck: deck(), phase: P, cards: cardsMap(), items: itemsFor(deck())}); }
+
 // 局面の setup の印（プレイの途中から作った局面を、作った後に直したかを見る）
 export function phaseSig(P) {
   try { const {setup, target} = buildSetup({deck: deck(), phase: P, cards: cardsMap(), items: itemsFor(deck())}); return JSON.stringify([setup, target]); } catch { return null; }
