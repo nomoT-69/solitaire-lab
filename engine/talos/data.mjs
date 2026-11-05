@@ -45,6 +45,9 @@ export function loadData({skillCards,pDrinks,pItems,customizations}){
 // 例：{ids:[827,828], name:'甘く溶ける心', set:{type:'mental'}, reason:'…'}
 // （甘く溶ける心は一度メンタルに上書きしたが、利用者が実ゲームで確かめてアクティブだった（2026-11-03）ので取り消した）
 export const OVERRIDES=[];
+// 発動の順の、実ゲームで確かめた違いの台帳（gakumas-engine と違えるもの。DESIGN 10.4）。ids の札が登録する at:cardUsed の効果は、札を使ったときの効果の最後
+// （cardUsed → activeCardUsed・mentalCardUsed の後）に発動する
+export const LATE_CARD_USED_EFFECTS=[{ids:[584,585],name:'夏夜に咲く思い出',reason:'揺れ動く想い（P アイテム、cardUsed[active]）で強気になってから夏夜の点が出て、その後に札の効果（利用者が実ゲームで確認、それ以外は gakumas-engine の順でよいとの判断）',date:'2026-11-05'}];
 export function applyOverrides(data,list=OVERRIDES){
   for(const o of list)for(const id of o.ids){const c=data.cards.get(id);if(!c)throw Error('上書きする札がありません: '+id);
     if(o.name&&!c.name.startsWith(o.name))throw Error('上書きする札の名前が違います: '+id+' '+c.name);Object.assign(c,o.set);c.overridden=(c.overridden||[]).concat(o.reason);}

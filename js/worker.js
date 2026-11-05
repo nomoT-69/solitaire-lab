@@ -43,7 +43,8 @@ const CAPS = [20000, 100000];
 const MAX_EST_MIB = 2400;
 const dataKey = m => JSON.stringify([m.calcSettings || null, m.csv.skillCards.length]);
 const followKey = (m, o) => JSON.stringify([m.calcSettings || null, m.csv.skillCards.length, o.criterion, o.order, o.extras]);
-const critOf = o => o.criterion === 'max' ? {criterion: 'max'} : {alpha: ALPHA[o.criterion]};
+// both：達成率最大と α の答えを1回の計算で並べて出す（エンジンの alsoMax。1.8.0、利用者の決定）
+const critOf = o => o.criterion === 'max' ? {criterion: 'max'} : {alpha: ALPHA[o.criterion], ...(o.both ? {alsoMax: true} : {})};
 // 同じ局面で、目標を下げた・基準（比べる順・達成率・自然さ）を変えたときは、前の最適の答えのグラフを使い回す（エンジンの job.retarget、AEGIS_SPEC.md 9.1）。
 // 前の答えの根の局面と同じ（canon が同じ、目標が前以下）で、データが同じときだけ。返り値は {r, model}（model は前の model の目標を変えたもの）
 function tryRetarget(m, model, o) {
@@ -348,7 +349,27 @@ function playTree(model, pol) {
   return {root, nodes};
 }
 
+// 答えを画面の形にする。α の計算で達成率最大の答え（maxResult）もあれば、達成率最大を主に、α の答えを alt に入れて返す（同じ答えなら alt なし）
+// maxResult がない結果（即答 follow・retarget の Tomahawk の結果）は、前線から達成率最大（P 最大 → D 最小 → A 最小）の点を取り出す
 function summarize(model, r, o, ms, final) {
+  if (o.criterion === 'max' || !o.both) return summarize1(model, r, o, ms, final);
+  const mr = r.maxResult !== undefined ? r.maxResult : maxFromFrontier(r);
+  if (!mr || !mr.best) return summarize1(model, r, o, ms, final);
+  const mainR = {...r, best: mr.best, bestRaw: mr.bestRaw, extract: mr.extract, solver: mr.solver || r.solver, meetsAlpha: undefined};
+  const out = summarize1(model, mainR, {...o, criterion: 'max'}, ms, final);
+  const b = r.best;
+  if (b && !(b.p === mr.best.p && b.d === mr.best.d && b.a === mr.best.a)) out.alt = summarize1(model, r, o, ms, final);
+  return out;
+}
+function maxFromFrontier(r) {
+  const fr = r.frontierRaw;
+  if (!Array.isArray(fr) || !fr.length || typeof r.summarize !== 'function' || typeof r.extract !== 'function') return null;
+  let bv = null, bs = null;
+  for (const v of fr) { const s = r.summarize(v); if (!bs || s.pNum > bs.pNum || (s.pNum === bs.pNum && (s.dNum < bs.dNum || (s.dNum === bs.dNum && s.aNum < bs.aNum)))) { bv = v; bs = s; } }
+  return {best: bs, bestRaw: bv, extract: () => r.extract(bv), solver: r.solver};
+}
+
+function summarize1(model, r, o, ms, final) {
   const out = {kind: r.kind || (r.status === 'complete' ? 'optimal' : 'incomplete'), kindLabel: r.kindLabel || '', status: r.status, final,
     solver: r.solver || 'Tomahawk', scope: r.scope || '', proven: r.proven || '', reason: r.reason || '',
     best: fmtBest(r.best), pMax: r.pMaxWithinHorizon ?? null, ms, optimalityProven: r.optimalityProven ?? null,

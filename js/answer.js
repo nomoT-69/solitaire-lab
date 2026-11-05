@@ -97,7 +97,7 @@ function resultView(R, rerender, {checkList} = {}) {
   const box = h('section.panel.ans', {});
   const add = (...xs) => box.append(...xs.filter(x => x));   // false・null は出さない
   add(h('div.ansHead', {}, h('span.status', {class: stCls, title: stDesc}, stName + (R.canceled ? '（中止）' : '')),
-    h('span.hint', `${critText(R.criterion).replace('100%にできれば100%、できなければ届く最大の達成率', '届く最大の達成率')}・${(R.ms / 1000).toFixed(1)}秒`)));
+    h('span.hint', `${R.criterion === 'max' ? '達成率最大の答え' : `${R.criterion}%で良ければの答え`}・${(R.ms / 1000).toFixed(1)}秒`)));
   for (const n of R.notes || []) add(h('p.warnline', n));   // 計算の部品の注意書き
   if (R.followed) add(h('p.hint', '前の局面の最適の答えから読み出しました（計算し直していません。答えは計算し直したときと同じです）。'));
   if (R.keptPrev) add(h('p.hint', '予算を増やして計算し直しましたが、前の答えより良い答えは見つからなかったので、前の答えを残しました。'));
@@ -140,6 +140,8 @@ function resultView(R, rerender, {checkList} = {}) {
       h('div.row', {}, h('button.mini', {onclick: () => { steps.pop(); save(); rerender(); }}, '1つ戻す'), h('button.mini', {onclick: () => { S.play = {steps: []}; save(); rerender(); }}, '最初から'))));
   } else add(h('div.lbl', '次の手'), nextView(R, false));
 
+  // もう一方の答え（達成率最大 ⇔ 95%で良ければ）：1行で出し、「こちらでプレイする」で入れ替える（1.8.0、利用者の決定 A）
+  if (R.alt && !(S.play?.steps?.length)) add(altView(R, rerender));
   // 暫定（予算切れ・中止）：予算を2倍にして計算し直す道を出す。達成率0%の暫定は、届かないと決まったわけではないことを書く
   if (kind !== 'optimal') {
     const sec = Math.round((R.budgetSec ?? S.settings.budgetSec) * 2), states = Math.round((R.maxStates ?? S.settings.maxStates) * 2);
@@ -168,6 +170,23 @@ function resultView(R, rerender, {checkList} = {}) {
   if (detailsOpen) add(details(R, kind, stName, stCls));
   add(h('button.more', {title: '版・設定・局面・答えをコピーします（個人情報は入りません）', onclick: copyReport}, '答えがおかしい？ 報告用の情報をコピー'));
   return box;
+}
+
+// もう一方の答えの1行。押すと主の答えと入れ替える（局面・予算などの共通の項目は残す）
+const ALT_LABEL = R => R.criterion === 'max' ? '達成率最大なら' : `${R.criterion}%で良ければ`;
+function altView(R, rerender) {
+  const A = R.alt, b = A.best;
+  const swap = () => {
+    const {alt, ...main} = R;
+    const own = ['kind', 'kindLabel', 'status', 'solver', 'scope', 'proven', 'reason', 'best', 'pMax', 'optimalityProven', 'meetsAlpha', 'natural', 'sameEval', 'tree', 'next', 'nextIcon', 'criterion', 'trials', 'stats', 'maxScore', 'notes'];
+    const mainOwn = Object.fromEntries(own.map(k => [k, main[k]]));
+    S.result = {...main, ...Object.fromEntries(own.map(k => [k, A[k]])), alt: mainOwn};
+    S.play = {steps: []}; save(); rerender();
+  };
+  return h('div.altans', {},
+    h('div.altline', {}, h('b', ALT_LABEL(A) + '：'), b ? `達成率 ${b.pText}・ドリンク ${num3(b.dNum)}本・手数 ${num3(b.aNum)}回` : '—', A.next && h('span.altnext', '・次の手 ' + A.next)),
+    A.meetsAlpha === false && A.criterion !== 'max' && h('p.hint', `まだ ${A.criterion}% に届いていません（時間内に見つかった中で一番よい手順）。`),
+    h('button', {onclick: swap}, 'こちらでプレイする'));
 }
 
 // 局面を作る：mid＝プレイの途中から（手札・行動回数のまま）、そうでなければ次のターン

@@ -313,3 +313,7 @@ button.ttv { background: var(--panel); }
 button.ttv b { font-size: 16px; }
 .ttv.none { color: var(--sub); font-size: 14px; padding: 4px 8px; }
 .ttcurve summary { cursor: pointer; font-size: 13px; color: var(--sub); margin-top: 6px; }
+/* もう一方の答え（達成率最大 ⇔ 95%で良ければ） */
+.altans { margin: 10px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.altans .altline { flex: 1 1 260px; }
+.altans .altnext { color: var(--sub); }

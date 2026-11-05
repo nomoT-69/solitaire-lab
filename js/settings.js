@@ -24,7 +24,7 @@ export function renderSettings(root, rerender) {
   root.append(h('div.cols.setcols', {},
     h('section.panel', {},
       h('h2', '答えの選び方'),
-      sel('基準', st.criterion, [['max', critText('max') + '（既定）'], ['95', '達成率 95% 以上'], ['99', '達成率 99% 以上'], ['100', '達成率 100%']], v => { st.criterion = v; touch(); }),
+      h('p.note', '答えは「達成率最大」と「95%で良ければ（達成率 95% 以上でドリンクを少なく）」の2つを1回の計算で出し、並べて表示します。プレイの案内は、答えの欄の「こちらでプレイする」で切り替えます。'),
       sel('比べる順', st.order, ORDERS.map(o => [o, orderText(o) + (o === 'dpa' ? '（既定）' : '')]), v => { st.order = v; touch(); }),
       h('p.note', 'D＝期待ドリンク（少ないほど良い）、P＝達成率（高いほど良い）、A＝期待操作（少ないほど良い）。基準を満たす答えの中で、この順に比べます。'),
       h('h3', '自然さ（チェックしたときだけ使う）'),

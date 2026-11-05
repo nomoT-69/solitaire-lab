@@ -1,4 +1,4 @@
-// 見込み（名前なし。Tomahawk・Aegis・Javelin の中の機能。利用者の決定 2026-11-04：見込みは名前を付けず、Sentinel は上限だけを受け持つ）。
+// 見込み（名前なし。Tomahawk・Aegis・Javelin の中の機能。利用者の決定 2026-11-04：見込みは名前を付けない。上限は Tomahawk の結果の maxScore。Sentinel の名前は 2026-11-05 に廃止）。
 // 状態がこの先どれだけ伸びそうかの目安。正しい上限ではない。探索の順番・層の上限で残す順だけに使うので、答えの値は厳密なまま。
 //  heatCapScore：Tomahawk の層の上限の選び方（Aegis の capHeat）、Javelin の暫定の手の順（beamHeat）が使う
 // 設計と測定は DESIGN.md の 22.3〜22.4・22.14〜22.15・22.19。

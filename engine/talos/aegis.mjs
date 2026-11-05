@@ -26,6 +26,19 @@ function compactProv(model,opts,r){
 const beamOpts=opts=>{const o=opts.criterion==='max'?opts:{...opts,criterion:'max'};return javelinSupports(o).ok?o:null;};
 const meets=(opts,r)=>opts.criterion==='max'||!opts.alpha||!r.bestRaw?undefined:cmp(r.bestRaw.p,opts.alpha)>=0;
 const trim=model=>{if(model.engine?.trimCaches)model.engine.trimCaches();};
+// 達成率最大の答えも並べて返す（opts.alsoMax、α を決めた比較のとき。G2 2026-11-05、利用者の決定「両方並べる・同時に出す（案 B）」。DESIGN 22.34）：
+// 各段の結果の根の前線から「最大」（P 最大 → E[D] 最小 → E[A] 最小）の点を取り出し、方策（DAG）を復元して持つ。段をまたいで良い方を残す。
+// 返り値・途中の答え（onUpdate）に maxResult：{best, bestRaw, solver, extract()} を付ける（なければ null）。Javelin の段は達成率最大の基準で解くので、その答えも候補
+function maxTracker(model,opts){
+  const on=!!opts.alsoMax&&opts.criterion!=='max';let mx=null;
+  const mopts={...opts,criterion:'max'};
+  const pick=r=>{const fr=r.frontierRaw;if(fr&&fr.length&&r.extract&&!r.compacted){let b=null;for(const v of fr)if(betterBest(v,b,mopts))b=v;return b;}return r.bestRaw??null;};
+  return {on,
+    offer(r,label){if(!on||r.status!=='complete')return;const v=pick(r);if(!v||!betterBest(v,mx?.bestRaw,mopts))return;
+      let dag=null;try{dag=r.compacted?r.extract():r.extract(v);}catch(e){return;}if(!dag)return;
+      const sm=r.summarize?r.summarize(v):summarizeV(v);mx={best:sm,bestRaw:v,solver:label,extract:()=>dag};},
+    attach(r){return on?{...r,maxResult:mx}:r;}};
+}
 // 層の上限の段（G2 の手順3、案 C。2026-11-04、利用者の決定で既定）：opts.capHeat が false でなければ、各上限で「得点＋熱意の見込み」の順（heatCapScore）を先に、
 // 今の順（根からの得点）を後に試す。暫定は良い方が残るので、今より悪くならない。段は {cap, heat}。
 // α を決めた比較では、見込みの段は「達成率最大」（辞書式、速い）で解く（α の前線を見込みの順で作ると重く、GUI の局面でメモリ不足になった。DESIGN 22.4）
@@ -57,13 +70,17 @@ export function solveAegis(model,opts={}){
   const canJavelin=javelinSupports(opts).ok;   // Javelin を使うかは1か所で決め、厳密な試しと暫定の答えの両方で使う（レビュー R2）
   if(canJavelin){
     const j=solveJavelin(model,{...opts,maxMs:Math.min(quickMs,left())});trials.push({solver:'Javelin',status:j.status,ms:j.stats.elapsedMs});
-    if(j.status==='complete'){j.solver='Javelin';j.trials=trials;return j;}}
+    if(j.status==='complete'){j.solver='Javelin';j.trials=trials;
+      // 最大の答えも並べる：素早い Javelin で解けた局面は、達成率最大の基準でも Javelin で解く（解けなければ maxResult は null）
+      if(opts.alsoMax&&!crit){const M=maxTracker(model,opts);const jm=solveJavelin(model,{...opts,criterion:'max',maxMs:Math.max(1,Math.min(quickMs,left()))});M.offer(jm,'Javelin（達成率最大）');return M.attach(j);}
+      return j;}}
   // 暫定の答え：比べる順で良い方（α のときは α を満たすもの、なければ P の大きいもの）
-  const key=r=>r.bestRaw;let prov=null;
+  const key=r=>r.bestRaw;let prov=null;const MX=maxTracker(model,opts);
   const better=(a,b)=>!b||betterBest(key(a),key(b),opts);   // 自然さまで比べる（レビュー JA1）
-  const offer=(r,label)=>{trials.push({solver:label,status:r.status,ms:r.stats?.elapsedMs,best:r.best&&[r.best.p,r.best.d,r.best.a]});
-    if(r.status==='complete'&&r.best&&better(r,prov)){prov=compactProv(model,opts,r);prov.solver=label;if(onUpdate)onUpdate(finish(prov,false));}};
-  const finish=(r,done)=>({...r,status:'provisional',kind:'provisional',optimalityProven:false,meetsAlpha:meets(opts,r),kindLabel:'暫定（検証済みの方策、最適は未証明）',trials:trials.slice(),final:done,
+  const offer=(r,label)=>{trials.push({solver:label,status:r.status,ms:r.stats?.elapsedMs,best:r.best&&[r.best.p,r.best.d,r.best.a]});MX.offer(r,label);
+    if(r.status==='complete'&&r.best&&better(r,prov)){prov=compactProv(model,opts,r);prov.solver=label;if(onUpdate)onUpdate(finish(prov,false));}
+    else if(MX.on&&prov&&onUpdate&&r.status==='complete')onUpdate(finish(prov,false));};   // 最大の答えだけが良くなったときも知らせる
+  const finish=(r,done)=>MX.attach({...r,status:'provisional',kind:'provisional',optimalityProven:false,meetsAlpha:meets(opts,r),kindLabel:'暫定（検証済みの方策、最適は未証明）',trials:trials.slice(),final:done,
     proven:r.bestRaw&&r.bestRaw.p.n===r.bestRaw.p.d?'達成率 100% は最大（証明済み）。E[D]・E[A] の最適は未証明':'証明できた範囲なし（暫定の達成率が最大かは未証明）'});
   // 2) 安い暫定の答えを、厳密な計算の前に作る（2026-11-03。GUI からの報告：予算60秒で、厳密な Tomahawk に時間を使い切り、暫定が達成率0%のまま
   //    だった局面がある。上位3手の探索で1.6秒、層の上限2万で6.7秒なら達成率100%の暫定が作れた）
@@ -77,7 +94,7 @@ export function solveAegis(model,opts={}){
   // asMax：α を決めた比較でも、届く最大の基準（速い辞書式）で解いて暫定の候補にする。その答えは α の最適ではないので、最終にはしない
   const tryCap=(st,ms,asMax=false)=>{const cap=capLabel(st);const r=solveTomahawk(model,{...(asMax?{...opts,criterion:'max'}:opts),...capOpts(model,opts,st),maxStates:Infinity,maxMs:ms});if(opts.compact!==false)trim(model);
     // 層の上限に一度も当たらずに終わったら、絞っていないので厳密に解けている：最適（証明済み）として返す（レビュー JA2 の確認で見つけた）
-    if(r.status==='complete'&&r.optimalityProven&&!asMax){trials.push({solver:'Tomahawk（層の上限 '+cap+'、上限に当たらず完了）',status:r.status,ms:r.stats?.elapsedMs});r.solver='Tomahawk';r.trials=trials;return r;}
+    if(r.status==='complete'&&r.optimalityProven&&!asMax){trials.push({solver:'Tomahawk（層の上限 '+cap+'、上限に当たらず完了）',status:r.status,ms:r.stats?.elapsedMs});r.solver='Tomahawk';r.trials=trials;MX.offer(r,'Tomahawk');return MX.attach(r);}
     if(r.reason==='MEMORY_LIMIT'){memStop=Math.min(memStop,st.cap);trials.push({solver:'Tomahawk（層の上限 '+cap+'）',status:r.status,reason:r.reason,ms:r.stats?.elapsedMs});return null;}   // メモリの上限：これより大きい層の上限も無理
     offer(r,'Tomahawk（層の上限 '+cap+(asMax?'・達成率最大':'')+'）');return null;};
   // 早めの層の上限は小さく（既定5千：重い局面で約1秒）。後の改善は caps（既定 2万 → 10万 → 30万）
@@ -85,7 +102,7 @@ export function solveAegis(model,opts={}){
   // 3) Tomahawk で厳密に解く。暫定の答えを良くする時間を、予算の reserveFrac（既定 25%）だけ残す
   const reserve=maxMs*(opts.reserveFrac??0.25);
   const t=solveTomahawkAuto(model,{...opts,maxStates,growthLimit:growthLimitOf(opts,maxStates),maxMs:Math.max(1,left()-reserve)});if(t.status!=='complete'&&opts.compact!==false)trim(model);trials.push({solver:'Tomahawk',status:t.status,reason:t.reason,ms:t.stats?.elapsedMs});
-  if(t.status==='complete'){t.solver='Tomahawk';t.trials=trials;return t;}
+  if(t.status==='complete'){t.solver='Tomahawk';t.trials=trials;MX.offer(t,'Tomahawk');return MX.attach(t);}
   // 4) 残りの時間で、暫定の答えを良くする。既定：層の上限を広げる。improve:true（試作。届く最大の基準だけ）：層の上限2万の後、
   //    暫定の方策の分かれ目を到達確率の高い順に Javelin で解き直す（improvePolicy）
   if(opts.improve&&crit&&canJavelin){
@@ -95,7 +112,7 @@ export function solveAegis(model,opts={}){
       trials.push({solver:'部分改善（Javelin）',status:'complete',ms:Date.now()-t0,best:[im.best.p,im.best.d,im.best.a],replaced:im.stats.replaced,tried:im.stats.tried});
       if(im.stats.replaced){const dag=im.dag;prov={...prov,best:im.best,bestRaw:toRaw(im.value),extract:()=>dag,solver:'部分改善（Javelin）'};}}
   }else for(const st of capsLeft){if(left()<=0)break;if(st.cap>=memStop)continue;const done=tryCap(st,left(),heatAsMax(opts,st,crit));if(done)return done;}
-  if(!prov)return {status:'incomplete',reason:'TIME_LIMIT',kind:'incomplete',kindLabel:'未完了',trials,stats:{elapsedMs:Date.now()-started}};
+  if(!prov)return MX.attach({status:'incomplete',reason:'TIME_LIMIT',kind:'incomplete',kindLabel:'未完了',trials,stats:{elapsedMs:Date.now()-started}});
   return finish(prov,true);
 }
 
@@ -111,7 +128,7 @@ export function createAegisJob(model,opts={}){
   const caps=capStages(opts,opts.caps??[20000,100000,300000]),steps=opts.horizonSteps??[opts.maxOps??24,48,96];
   const bm=beamOpts(opts);const J={trials:[],prov:null,final:null,calls:0,totalMs:0,quickDone:!canJavelin,beamIdx:bm?0:Infinity,
     early:{stages:capStages(opts,[opts.earlyCap??5000]),idx:0,res:{},done:false},exact:{hi:0,res:{},last:null,widened:[],abandoned:null},cap:{idx:0,res:{}},disposed:false};
-  const key=r=>r.bestRaw;const better=(a,b)=>!b||betterBest(key(a),key(b),opts);
+  const key=r=>r.bestRaw;const better=(a,b)=>!b||betterBest(key(a),key(b),opts);const MX=maxTracker(model,opts);   // 最大の答えも並べる（opts.alsoMax）
   const p1=()=>J.prov&&J.prov.bestRaw.p.n===J.prov.bestRaw.p.d;
   const stats=()=>({calls:J.calls,elapsedMs:J.totalMs});
   const finish=r=>({...r,status:'provisional',kind:'provisional',optimalityProven:false,meetsAlpha:meets(opts,r),kindLabel:'暫定（検証済みの方策、最適は未証明）',trials:J.trials.slice(),
@@ -121,24 +138,27 @@ export function createAegisJob(model,opts={}){
     if(J.exact.abandoned&&J.cap.idx>=caps.length)return {resumable:false,resumeReason:'厳密な計算は '+J.exact.abandoned+' で続けられず、層の上限もすべて試し終えました'};
     return {resumable:true,resumeReason:J.exact.abandoned?'厳密な計算は '+J.exact.abandoned+' で止めました。続きでは層の上限を広げて暫定を良くします':null};
   };
-  const out=r=>({...r,job:stats(),...resumeInfo()});
+  const out=r=>MX.attach({...r,job:stats(),...resumeInfo()});
   function run(ro={}){
     if(J.disposed)throw Error('AEGIS_JOB_DISPOSED');
     const started=Date.now();const maxMs=ro.maxMs??60000,maxStates=ro.maxStates??opts.maxStates??2e7,onUpdate=ro.onUpdate??opts.onUpdate??null;
     const left=()=>maxMs-(Date.now()-started);J.calls++;
     const done=()=>{J.totalMs+=Date.now()-started;return out(J.final);};
     if(J.final){J.totalMs+=Date.now()-started;return out(J.final);}
-    const offer=(r,label)=>{J.trials.push({solver:label,status:r.status,ms:r.stats?.elapsedMs,best:r.best&&[r.best.p,r.best.d,r.best.a]});
-      if(r.status==='complete'&&r.best&&better(r,J.prov)){J.prov=compactProv(model,opts,r);J.prov.solver=label;if(onUpdate)onUpdate(out(finish(J.prov)));}};
+    const offer=(r,label)=>{J.trials.push({solver:label,status:r.status,ms:r.stats?.elapsedMs,best:r.best&&[r.best.p,r.best.d,r.best.a]});MX.offer(r,label);
+      if(r.status==='complete'&&r.best&&better(r,J.prov)){J.prov=compactProv(model,opts,r);J.prov.solver=label;if(onUpdate)onUpdate(out(finish(J.prov)));}
+      else if(MX.on&&J.prov&&onUpdate&&r.status==='complete')onUpdate(out(finish(J.prov)));};
     // 1) 素早い Javelin（最初の run だけ）
     if(!J.quickDone){J.quickDone=true;const j=solveJavelin(model,{...opts,maxMs:Math.min(opts.quickMs??2000,left())});J.trials.push({solver:'Javelin',status:j.status,ms:j.stats.elapsedMs});
-      if(j.status==='complete'){j.solver='Javelin';j.trials=J.trials.slice();J.final=j;return done();}}
+      if(j.status==='complete'){j.solver='Javelin';j.trials=J.trials.slice();J.final=j;
+        if(MX.on){const jm=solveJavelin(model,{...opts,criterion:'max',maxMs:Math.max(1,Math.min(opts.quickMs??2000,left()))});MX.offer(jm,'Javelin（達成率最大）');}
+        return done();}}
     // 2) 安い暫定：Javelin の上位1〜3手（最初の run だけ）と、Tomahawk の層の上限5千（続きから）
     const stepMs=()=>Math.min(left(),Math.max(5000,maxMs*(opts.earlyFrac??0.05)));const beams=opts.beams??[1,2,3];
     while(J.beamIdx<beams.length){if(p1()||left()<=0){J.beamIdx=Infinity;break;}const b=beams[J.beamIdx++];
       const r=solveJavelin(model,{...bm,beam:b,maxMs:stepMs(),orderHeat:opts.beamHeat??8,maxMemo:opts.beamMaxMemo??1e5});offer(r,'Javelin（上位'+b+'手'+((opts.beamHeat??8)?'・熱意の見込みの順':'')+(crit?'':'・達成率最大')+'）');if(r.status!=='complete'){J.beamIdx=Infinity;break;}}
     const tryCap=(st,res,ms,asMax=false)=>{const cap=capLabel(st);const r=solveTomahawk(model,{...(asMax?{...opts,criterion:'max'}:opts),...capOpts(model,opts,st),maxStates:Infinity,maxMs:ms,resume:res});if(r.status==='complete'&&opts.compact!==false)trim(model);
-      if(r.status==='complete'&&r.optimalityProven&&!asMax){J.trials.push({solver:'Tomahawk（層の上限 '+cap+'、上限に当たらず完了）',status:r.status,ms:r.stats?.elapsedMs});r.solver='Tomahawk';r.trials=J.trials.slice();J.final=r;return 'final';}
+      if(r.status==='complete'&&r.optimalityProven&&!asMax){J.trials.push({solver:'Tomahawk（層の上限 '+cap+'、上限に当たらず完了）',status:r.status,ms:r.stats?.elapsedMs});r.solver='Tomahawk';r.trials=J.trials.slice();MX.offer(r,'Tomahawk');J.final=r;return 'final';}
       if(r.status==='complete'){offer(r,'Tomahawk（層の上限 '+cap+(asMax?'・達成率最大':'')+'）');return 'done';}
       if(r.reason!=='TIME_LIMIT'){J.trials.push({solver:'Tomahawk（層の上限 '+cap+'）',status:r.status,reason:r.reason,ms:r.stats?.elapsedMs});return 'stop';}   // メモリの上限など：これより大きい上限も無理
       return 'more';};
@@ -155,7 +175,7 @@ export function createAegisJob(model,opts={}){
         E.abandoned=r.reason;E.res=null;
         if(E.last){E.last.widened=E.widened;E.last.widenNote='上限 '+h+' で解き直す途中で '+r.reason+' になったので、上限 '+E.last.stats.maxOps+' の範囲での最適を返す';J.final=E.last;return done();}
         break;}
-      r.stats.maxOps=h;r.solver='Tomahawk';
+      r.stats.maxOps=h;r.solver='Tomahawk';MX.offer(r,'Tomahawk');
       if(r.horizonFree||E.hi===steps.length-1){r.widened=E.widened;r.trials=J.trials.slice();J.final=r;return done();}
       E.widened.push({maxOps:h,horizonCut:r.stats.horizonCut});E.last=r;E.hi++;E.res={};
     }

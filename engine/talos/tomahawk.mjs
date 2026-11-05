@@ -36,7 +36,7 @@ export function tecnaiModel(data,setup,target,options={}){
 // 層の上限で残す状態の順の見込み（heatCapScore）は talos/estimate.mjs へ移した。前の呼び方のため、ここからも出す（2026-11-04）
 export {heatCapScore} from './estimate.mjs';
 export const sortActs=(E,cs)=>{const k=new Map(cs.map(a=>[a,E.canonAct(a.raw??a)]));return cs.sort((x,y)=>k.get(x)<k.get(y)?-1:k.get(x)>k.get(y)?1:0);};
-export const sortBranches=(E,bs)=>{const k=bs.map(b=>({b,c:E.canon(b.s)}));k.sort((x,y)=>x.c<y.c?-1:x.c>y.c?1:0);return k.map(x=>{x.b.canon=x.c;return x.b;});};
+export const sortBranches=(E,bs)=>{const k=bs.map(b=>({b,c:E.canon(b.s)}));k.sort((x,y)=>x.c<y.c?-1:x.c>y.c?1:x.b.s.score-y.b.s.score);return k.map(x=>{x.b.canon=x.c;return x.b;});};
 
 // 大きな表：JavaScript の Map は約1,670万件が上限なので、いっぱいになったら次の Map を足す（ふつうは1つのまま。引くときは順に探す）
 export class BigMap{constructor(limit=16000000){this.ms=[new Map()];this.limit=limit;this.size=0;}
