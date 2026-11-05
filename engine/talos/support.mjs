@@ -1,7 +1,7 @@
 // Talos・Tecnai が対応している DSL の一覧と、札・ドリンク・P アイテムの「対応していない効果」を調べる関数（読み込む前に、静的に調べる）。
 // エンジン（engine.mjs・tecnai.mjs）の対応の範囲と同じにする（bench/test-settings.mjs で、ここで対応とした札がエンジンで読み込めることを確かめる）。
 // ブラウザでも動く（Node 専用の機能なし）。
-export const IN_TURN=new Set(['beforeCardUsed','cardUsed','activeCardUsed','mentalCardUsed','afterCardUsed','afterActiveCardUsed','afterMentalCardUsed','stanceChanged','stanceValueChanged','endOfTurn','staminaDecreased']);
+export const IN_TURN=new Set(['beforeCardUsed','cardUsed','activeCardUsed','mentalCardUsed','afterCardUsed','afterActiveCardUsed','afterMentalCardUsed','stanceChanged','stanceValueChanged','endOfTurn','staminaDecreased','fullPowerChargeIncreased']);
 export const LATER=new Set(['turn','startOfTurn','beforeStartOfTurn','afterStartOfTurn','everyTurn','startOfStage','afterStartOfStage','prestage','turnSkipped']);
 export const IGNORED_FIELDS=new Set(['genki','fixedGenki','stamina','fixedStamina','fullPowerCharge','halfCostTurns','doubleCostTurns','costReduction','costIncrease','nullifyCostCards','nullifyCostActiveCards','cost','nullifyGenkiTurns','doubleBuffCostTurns']);
 export const IGNORED_GROWTH=new Set(['g.cost','g.typedCost','g.genki','g.fullPowerCharge','g.halfCostTurns']);
@@ -9,7 +9,7 @@ export const IGNORED_CALLS=new Set(['setFullPowerChargeBuff','setFullPowerEffect
 export const CALLS=new Set(['setStance','drawCard','exchangeHand','addCardToDeck','holdSelected','moveRandomToHand','removeRandom','useRandomCardFree','addRandomUpgradedSSRCardToHand',
   'setScoreBuff','setEnthusiasmBuff','setEnthusiasmBonus','setStrengthEffectBuff',...IGNORED_CALLS]);
 export const ASSIGN=new Set(['score','cardUsesRemaining','enthusiasm','enthusiasmMultiplier','effectCounter','scoreTimes']);
-export const VARIABLES=new Set(['stance','prevStance','isStrength','isPreservation','isFullPower','preservationTimes','strengthTimes','leisureTimes','fullPowerTimes','stanceChangedTimes',
+export const VARIABLES=new Set(['fullPowerCharge','cumulativeFullPowerCharge','stance','prevStance','isStrength','isPreservation','isFullPower','preservationTimes','strengthTimes','leisureTimes','fullPowerTimes','stanceChangedTimes',
   'stanceChangedByDirectEffectTimes','isDirectEffect','effectCounter','cardsUsed','turnCardsUsed','turnsRemaining','cardUsesRemaining','enthusiasm','score','usedCardBaseId','usedCardId',
   'none','strength','strength2','preservation','preservation2','leisure','fullPower','parentPhase','processCost','processCard']);
 export const STANCE_NAMES=new Set(['preservation','preservation2','leisure','strength','strength2']);
@@ -36,6 +36,10 @@ function targetProblems(e,out,where){
     case 'call':if(!TARGET_CALLS.has(e.name))out.push(where+'：対応していない札の対象「'+e.name+'(…)」');return;}
 }
 // 項目の並び（DSL の構文解析の結果）の、対応していない効果。where：場所の説明
+// 回数の上限を、本体の複数の条件（if:）で共有する書き方（G2 2026-11-05、利用者の決定「見張りだけ」）。gakumas-tools では条件ごとに別の効果（別の回数）になるが、
+// ここでは1つの回数を共有するので数え方が違う。今のデータには1件もない（Pアイテム509・札922・ドリンク28）。入ってきたら黙って違う答えを出さず、エラーで知らせる
+export const sharedLimitIfs=x=>x.kind==='effect'&&x.mods?.limit!=null&&(x.body||[]).filter(b=>b.kind==='effect'&&!b.phase&&b.cond).length>=2;
+export const SHARED_LIMIT_MSG='回数の上限（limit）を複数の条件（if:）で共有する書き方には対応していません（gakumas-tools では条件ごとに別の回数になります）';
 export function itemProblems(items,where,out=[]){
   for(const x of items||[]){
     if(x.kind==='action'){
@@ -48,7 +52,7 @@ export function itemProblems(items,where,out=[]){
         if(IGNORED_FIELDS.has(x.lhs)||IGNORED_GROWTH.has(x.lhs))continue;   // 省く項目（体力など）は、右辺も読まない
         if(!(ASSIGN.has(x.lhs)||x.lhs==='g.score'||x.lhs==='g.scoreTimes')){out.push(where+'：対応していない代入「'+x.lhs+x.op+'」');continue;}
         exprProblems(x.rhs,out,where);}
-    }else if(x.kind==='effect'){
+    }else if(x.kind==='effect'){if(sharedLimitIfs(x))out.push(where+'：'+SHARED_LIMIT_MSG);
       if(x.phase){if(LATER.has(x.phase))continue;if(!IN_TURN.has(x.phase)){out.push(where+'：対応していない発動のきっかけ「'+x.phase+'」');continue;}}
       if(x.filter)targetProblems(x.filter,out,where);
       if(x.cond)exprProblems(x.cond,out,where);

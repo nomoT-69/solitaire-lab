@@ -39,6 +39,9 @@ export function buildSetup({deck, phase, cards, items}) {
   if (p.prevStance && p.prevStance !== 'none') setup.prevStance = p.prevStance;
   if (p.drinkCap !== null && p.drinkCap !== undefined) setup.drinkCap = p.drinkCap;
   if (p.nullifyCostCards > 0 && deck.items.some(id => items.get(id)?.stamina)) setup.nullifyCostCards = p.nullifyCostCards;
+  // 全力値・累計の全力値（入れたときだけ渡す。空欄の全力値は 0、累計は計算の部品が仮に 7 とする）
+  if (Number.isFinite(p.fullPowerCharge) && p.fullPowerCharge > 0) setup.fullPowerCharge = p.fullPowerCharge;
+  if (Number.isFinite(p.cumulativeFullPowerCharge)) setup.cumulativeFullPowerCharge = p.cumulativeFullPowerCharge;
   // HIF 再動など、名前ごとに共有する効果のこれまでに使った回数：{HIF:{通常版の番号:回数}}（0 は渡さない）
   const au = {}; for (const [a, m] of Object.entries(P.abilityUses || {})) for (const [id, n] of Object.entries(m || {})) if (n > 0) (au[a] ||= {})[id] = n;
   if (Object.keys(au).length) setup.abilityUses = au;

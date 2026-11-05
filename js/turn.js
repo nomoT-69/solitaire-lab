@@ -4,7 +4,7 @@ import {D, search, itemInputs, staminaTriggered, hifSharedLimit} from './data.js
 import {firedOf} from './setup.js';
 import {S, save, uid, deck, newPhase, STANCES} from './store.js';
 import {h, pic, cardTile, popover, num, sel, toast, qtip} from './ui.js';
-import {ensurePhase, entries, zoneOf, growthOf, extraGrowth, setAssume, ZONES, ZNAME, MAX_DRINKS, growthBulk} from './phase.js';
+import {ensurePhase, entries, zoneOf, growthOf, extraGrowth, setAssume, ZONES, ZNAME, MAX_DRINKS, growthBulk, fpNeeds} from './phase.js';
 import {renderAnswer, isStale} from './answer.js';
 import {renderSteps} from './steps.js';
 import {currentSetup} from './run.js';
@@ -105,6 +105,8 @@ export function renderTurn(root, rerender) {
       field('熱意', 'enthusiasm', {tip: 'ゲームの画面の、今の熱意の値'}), field('熱意追加', 'enthusiasmBonus', {tip: 'ゲームの画面の、熱意追加の値'}),
       field('熱意倍率', 'enthusiasmBuff', {step: 10, plus: true, tip: 'ゲームの表示の「＋何%」をそのまま入れる（P アイテムなどで上がった分も含む）'}),
       field('試験倍率', 'trial', {step: 1, pct: true, tip: '試験全体の倍率（%）。例：4426'}),
+      fpNeeds(dk, P).fp && field('全力値', 'fullPowerCharge', {width: 4, tip: 'ゲームの画面の、今の全力値。アンダンテなど全力値がコストの札は、足りるときだけ使える（空欄は 0）'}),
+      fpNeeds(dk, P).cfp && field('累計の全力値', 'cumulativeFullPowerCharge', {width: 4, tip: 'このステージで、これまでに増えた全力値の合計（ブースト・ラッシュなどの点に使う）。空欄なら仮に 7 で計算'}),
       h('div.drinks', {}, h('span.sl', `ドリンク ${P.drinksHeld.length}/${MAX_DRINKS}`, qtip(`今持っているドリンク。＋・−で本数を変える（持てるのは${MAX_DRINKS}本まで）`)),
         dk.drinks.length ? h('div.dchips', dk.drinks.map(id => { const d = D.drinks.find(x => x.id === id); const n = drinkCount(id);
           return h('span.dchip', {class: n ? 'on' : '', title: d?.name},

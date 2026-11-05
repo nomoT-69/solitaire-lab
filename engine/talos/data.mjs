@@ -93,7 +93,7 @@ export function cardVariant(data,id,{c11n=null,abilities=[]}={}){
   if(!cs.length&&!ab.length)return id;
   const key=id+(cs.length?'#c'+cs.map(([k,v])=>k+':'+v).join(','):'')+(ab.length?'#a'+ab.join(','):'');
   if(data.cards.has(key))return key;
-  const v={...base,key,actions:base.actions.slice(),effects:base.effects.slice(),usable:base.usable.slice(),startGrowth:{score:0,scoreTimes:0},variantOf:id,c11n:cs,abilities:ab};
+  const v={...base,key,actions:base.actions.slice(),effects:base.effects.slice(),usable:base.usable.slice(),startGrowth:{score:0,scoreTimes:0,fullPowerCharge:0,typedCost:0},variantOf:id,c11n:cs,abilities:ab};
   const pickLevel=(items,L)=>items.flatMap(x=>x.kind==='level'?(x.level===L?x.body:[]):[x]);
   for(const [cid,L] of cs){
     const c=data.customizations?.get(cid);if(!c)throw Error('未登録のカスタマイズ: '+cid);
@@ -105,6 +105,8 @@ export function cardVariant(data,id,{c11n=null,abilities=[]}={}){
         for(const y of x.body){if(y.kind!=='effect'||y.target?.t!=='id'||y.target.name!=='this')throw Error('未対応のカスタマイズ: '+c.name);
           for(const z of y.body){if(z.kind!=='action'||z.op!=='+=')throw Error('未対応のカスタマイズ: '+c.name);
             if(z.lhs==='g.score')v.startGrowth.score+=z.rhs.v;else if(z.lhs==='g.scoreTimes')v.startGrowth.scoreTimes+=z.rhs.v;
+            // 全力値+（g.fullPowerCharge）・コスト値-（g.typedCost）：全力値を数える局面で使う（G2 2026-11-05）。数えない局面では今までどおり関係しない
+            else if(z.lhs==='g.fullPowerCharge')v.startGrowth.fullPowerCharge+=z.rhs.v;else if(z.lhs==='g.typedCost')v.startGrowth.typedCost+=z.rhs.v;
             else if(!['g.cost','g.typedCost','g.genki','g.fullPowerCharge','g.halfCostTurns','g.motivation','g.goodConditionTurns','g.goodImpressionTurns','g.concentration','g.perfectConditionTurns'].includes(z.lhs))throw Error('未対応の成長（カスタマイズ）: '+z.lhs);}}
       }else v.effects.push(x);
     }

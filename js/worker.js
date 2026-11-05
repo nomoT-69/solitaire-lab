@@ -354,6 +354,7 @@ function summarize(model, r, o, ms, final) {
     best: fmtBest(r.best), pMax: r.pMaxWithinHorizon ?? null, ms, optimalityProven: r.optimalityProven ?? null,
     resumable: !!r.resumable && !!J, resumeReason: r.resumeReason || '', jobInfo: r.job || null,
     meetsAlpha: typeof r.meetsAlpha === 'boolean' ? r.meetsAlpha : null,
+    notes: (model.engine?.notes || []).slice(),   // 計算の部品の注意書き（累計の全力値を仮に 7 で計算した、など）
     maxScore: r.maxScore && typeof r.maxScore.value === 'number' ? {value: r.maxScore.value, reached: !!r.maxScore.reached, exact: !!r.maxScore.exact, atLeast: !!r.maxScore.atLeast, note: r.maxScore.note || ''} : null,   // この局面から取りうる最大の最終点   // 達成率を指定したとき（95% など）、その達成率を満たすか
     stats: {nodes: r.stats?.nodes ?? null, heapMiB: r.stats?.heapUsedMiB ?? null}, criterion: o.criterion, order: o.order, extras: o.extras,
     trials: (r.trials || []).map(t => `${t.solver}：${({complete: '終了', incomplete: '打ち切り', provisional: '暫定'})[t.status] || t.status}${t.status === 'incomplete' && t.reason ? '・' + (REASON[t.reason] || t.reason) : ''}${t.ms !== undefined ? '（' + (t.ms / 1000).toFixed(1) + '秒）' : ''}`)};
@@ -384,6 +385,6 @@ function turnEndState(E, s) {
   const recs = x => JSON.parse(x).map(([path, l, c, src]) => ({path, l, c, src: src === null ? null : card(src)}));
   const d = E.describe(s);
   return {hand: zone(hand), discard: zone(disc), removed: zone(rem), held: JSON.parse(held).map(card), deck: deckCards,
-    drinks: d.drinks, stance: d.stance, prevStance: d.prevStance, nullifyCostCards: d.nullifyCostCards ?? null, enthusiasm: d.enthusiasm, extra: d.extra, factor: d.factor, bonus: d.bonus, uses: d.uses, times: d.times, score: s.score,
+    drinks: d.drinks, stance: d.stance, prevStance: d.prevStance, nullifyCostCards: d.nullifyCostCards ?? null, fullPowerCharge: d.fullPowerCharge ?? null, cumulativeFullPowerCharge: d.cumulativeFullPowerCharge ?? null, enthusiasm: d.enthusiasm, extra: d.extra, factor: d.factor, bonus: d.bonus, uses: d.uses, times: d.times, score: s.score,
     effs: recs(effs), cardEffs: recs(ce)};
 }

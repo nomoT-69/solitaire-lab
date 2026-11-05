@@ -8,7 +8,7 @@ import {unsupportedList, pItemInputs} from '../engine/talos/support.mjs';
 const CSV_KEY = 'aegis.csv.v1';
 // 札の一覧（デッキ・デッキにない札を足す）に出さない札（通常版の番号）。データ（HIF の組など）には入っているが、計算がまだ対応していない札
 // ラッシュ・ブースト：全力値が要る（利用者の指示 2026-11-04：入力だけできるようにして、今は隠しておく）。全力値に対応したら外す
-export const HIDDEN_CARDS = new Set([905, 907]);
+export const HIDDEN_CARDS = new Set([]);   // ラッシュ・ブースト（905・907）は全力値に対応したので戻した（2026-11-05）
 export const CSV_FILES = {skillCards: 'skill_cards.csv', pDrinks: 'p_drinks.csv', pItems: 'p_items.csv', customizations: 'customizations.csv', pIdols: 'p_idols.csv'};
 export function loadUserCsv() { try { return JSON.parse(localStorage.getItem(CSV_KEY)); } catch { return null; } }
 export function saveUserCsv(o) { if (o) localStorage.setItem(CSV_KEY, JSON.stringify(o)); else localStorage.removeItem(CSV_KEY); }
@@ -73,6 +73,8 @@ export async function loadAll() {
         : /at:beforeCardUsed\s*\{.*limit:\d+/.test(r.actions) ? {limit: Number(r.actions.match(/at:beforeCardUsed\s*\{.*?limit:(\d+)/)[1])} : null,
       text: [r.actions, r.effects].filter(Boolean).join(' / ')};
     c.hidden = HIDDEN_CARDS.has(c.baseId);
+    const all3 = [r.cost, r.actions, r.effects].join(' ');   // 全力値を使う札か（コスト・効果）、累計の全力値を読む札か
+    c.fp = /fullPowerCharge/.test(all3); c.cfp = /cumulativeFullPowerCharge/.test(all3);
     D.cards.push(c); D.cardById.set(c.id, c);
   }
   for (const r of parseCsv(dr)) D.drinks.push({id: Number(r.id), name: r.name, plan: r.plan, text: r.actions});

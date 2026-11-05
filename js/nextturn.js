@@ -72,7 +72,9 @@ export function buildNextPhase(deck, prev, st, {mid = false} = {}) {
   // 数：指針と回数はエンジンから。ほかは前の入力を残す
   const p = {...prev.params};
   p.stance = st.stance; p.prevStance = st.prevStance || 'none';
-  if (Number.isFinite(st.nullifyCostCards)) p.nullifyCostCards = st.nullifyCostCards;   // コストを0にする残り回数（原点へのチケットを持つ局面だけ、エンジンが出す）
+  if (Number.isFinite(st.nullifyCostCards)) p.nullifyCostCards = st.nullifyCostCards;
+  if (Number.isFinite(st.fullPowerCharge)) p.fullPowerCharge = st.fullPowerCharge;   // 全力値・累計（数える局面だけ、エンジンが出す）
+  if (Number.isFinite(st.cumulativeFullPowerCharge)) p.cumulativeFullPowerCharge = st.cumulativeFullPowerCharge;   // コストを0にする残り回数（原点へのチケットを持つ局面だけ、エンジンが出す）
   p.preservationTimes = st.times.preservation; p.strengthTimes = st.times.strength; p.leisureTimes = st.times.leisure; p.directStanceTimes = st.times.direct;
   // 熱意・熱意追加・熱意倍率・スコア上昇は、ターンの終わりの値（エンジンから）。行動回数はゲームの基本の1に戻す
   if (Number.isFinite(st.enthusiasm)) p.enthusiasm = st.enthusiasm;

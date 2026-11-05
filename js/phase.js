@@ -28,6 +28,16 @@ export const growthOf = (P, en) => { const c = D.cardById.get(en.id); if (!c?.gr
 export const extraGrowth = (P, en) => ({score: P.assume[en.uid]?.score || 0, times: P.assume[en.uid]?.times || 0});
 export const setAssume = (P, u, k, v) => { P.assume[u] = {...P.assume[u], [k]: v}; };
 
+// 全力値の欄を出すか：デッキ（足した札を含む）の札・持っているドリンク・P アイテムが全力値を使う／増やすか、カスタマイズに「全力値」があるか。
+// 累計の全力値の欄は、累計を読むものがあるときだけ（エンジンの engine.inputs と同じ考え。GUI では札などの文面で判定する）
+export function fpNeeds(dk, P) {
+  const all = entries(dk, P);
+  const custFp = en => Object.entries(en.c11n || {}).some(([k, v]) => v > 0 && /全力値/.test(D.custs.get(k)?.name || ''));
+  const txt = [...P.drinksHeld.map(id => D.drinks.find(x => x.id === id)?.text || ''), ...dk.items.map(id => D.items.find(x => x.id === id)?.text || '')].join(' ');
+  const cards = all.map(en => D.cardById.get(en.id)).filter(Boolean);
+  return {fp: cards.some(c => c.fp) || all.some(custFp) || /fullPowerCharge/.test(txt), cfp: cards.some(c => c.cfp) || /cumulativeFullPowerCharge/.test(txt)};
+}
+
 export function validate(dk, P) {
   const out = []; const err = m => out.push(['err', m]), warn = m => out.push(['warn', m]), info = m => out.push(['info', m]);
   const all = entries(dk, P); const cnt = z => all.filter(e => zoneOf(P, e.uid) === z).length;
@@ -50,6 +60,10 @@ export function validate(dk, P) {
   if (!(p.trial > 0)) err('試験倍率は0%より大きくしてください');
   if (cnt('deck') === 0 && cnt('discard') === 0) info('山札も捨て札も0枚なので、札を引けません');
   for (const id of dk.items) if (/strengthTimes>=4/.test(D.items.find(x => x.id === id)?.text || '') && p.strengthTimes < 4) info(`${D.items.find(x => x.id === id).name}：強気の回数が ${p.strengthTimes} 回なので、まだ発動しません（4回以上で発動）`);
+  // 全力値：全力値を使う札があるのに空欄なら、0 として計算する（全力値がコストの札は使えない）
+  const fpn = fpNeeds(dk, P);
+  if (fpn.fp && (p.fullPowerCharge === null || p.fullPowerCharge === undefined)) warn('全力値が空欄です。0 として計算します（アンダンテなど、全力値がコストの札は使えません）。ゲームの画面の全力値を入れてください');
+  if (fpn.cfp && (p.cumulativeFullPowerCharge === null || p.cumulativeFullPowerCharge === undefined)) info('累計の全力値が空欄です。仮に 7 として計算します（ブースト・ラッシュなど、累計を使う札の点は目安になります）');
   // 入力の食い違い：熱意倍率を上げる P アイテム（原点へのチケットなど）が発動済みなのに、熱意倍率がその分より小さい
   for (const id of dk.items) {
     const inf = itemInputs(id); if (!inf) continue;

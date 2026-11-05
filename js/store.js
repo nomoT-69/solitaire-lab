@@ -19,7 +19,9 @@ export const defaultParams = () => ({
   target: null, trial: 1, drinkCap: null, turnsRemaining: 1,
   preservationTimes: 0, strengthTimes: 0, leisureTimes: 0, directStanceTimes: 0,
   gameDeckCount: null,       // ゲーム画面の山札の枚数（入れると照合する）
-  nullifyCostCards: 0,       // コストを0にする残り回数（全身全霊+ など。体力が減ったら発動する P アイテムを持つときだけ使う）
+  nullifyCostCards: 0,
+  fullPowerCharge: null,     // 全力値（全力値を使う札があるときだけ欄を出す。空欄は 0）
+  cumulativeFullPowerCharge: null,   // 累計の全力値（空欄なら計算の部品が仮に 7）       // コストを0にする残り回数（全身全霊+ など。体力が減ったら発動する P アイテムを持つときだけ使う）
 });
 
 export const newDeck = name => ({id: uid(), name, cards: [], drinks: [], items: [], pidol: null, updated: Date.now()});

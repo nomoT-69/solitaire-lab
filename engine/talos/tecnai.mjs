@@ -34,7 +34,7 @@ const K1=0,K2=1,NON=2,STR=3,STR2=4,NONE=-1;
 const isPres=st=>st===K1||st===K2,isStr=st=>st===STR||st===STR2;
 const STANCE_MULT=[0.5,0.25,0,2,2.5];
 const stanceOf=name=>{const i=STANCES.indexOf(name);if(i<0)throw Error('未対応の指針: '+name);return i;};
-const IN_TURN=new Set(['beforeCardUsed','cardUsed','activeCardUsed','mentalCardUsed','afterCardUsed','afterActiveCardUsed','afterMentalCardUsed','stanceChanged','stanceValueChanged','endOfTurn','staminaDecreased']);
+const IN_TURN=new Set(['beforeCardUsed','cardUsed','activeCardUsed','mentalCardUsed','afterCardUsed','afterActiveCardUsed','afterMentalCardUsed','stanceChanged','stanceValueChanged','endOfTurn','staminaDecreased','fullPowerChargeIncreased']);
 // 原点へのチケット（P アイテム 307・308、2026-11-04 利用者の決定。試作・未検証）：札のコストが stamina-=（直接の体力消費、正の数）のときだけ、
 // コストの処理（processCost）で体力が減ったとして staminaDecreased を発動する。cost-=（元気から先に減る）は元気で受けるとみなして発動しない
 // 回数の上限（limit）を、条件に当たったときだけ減らす（options.limitOnCond、既定 true。false で前の数え方。2026-11-04）。gakumas-tools の変換では
@@ -47,6 +47,8 @@ const positiveCost=card=>(card.cost||[]).some(x=>x.kind==='action'&&x.op==='-='&
 const LATER=new Set(['turn','startOfTurn','beforeStartOfTurn','afterStartOfTurn','everyTurn','startOfStage','afterStartOfStage','prestage','turnSkipped']);
 const IGNORED_FIELDS=new Set(['genki','fixedGenki','stamina','fixedStamina','fullPowerCharge','halfCostTurns','doubleCostTurns','costReduction','costIncrease','nullifyCostCards','nullifyCostActiveCards','cost','nullifyGenkiTurns','doubleBuffCostTurns']);
 const IGNORED_GROWTH=new Set(['g.cost','g.typedCost','g.genki','g.fullPowerCharge','g.halfCostTurns']);
+// 累計の全力値を入力しないときの暫定値（利用者の決定 2026-11-05：ブースト・ラッシュなどの累計は暫定7で計算し、注意書きを出す）
+export const CFP_PROVISIONAL=7;
 const IGNORED_CALLS=new Set(['setFullPowerChargeBuff','setFullPowerEffectBuff','decreaseFullPowerCharge']);
 const CALLS=new Set(['setStance','drawCard','exchangeHand','addCardToDeck','holdSelected','moveRandomToHand','removeRandom','useRandomCardFree','addRandomUpgradedSSRCardToHand',
   'setScoreBuff','setEnthusiasmBuff','setEnthusiasmBonus','setStrengthEffectBuff',...IGNORED_CALLS]);
@@ -60,7 +62,7 @@ const LOC={hand:0,deck:1,discard:2,removed:3,held:4,used:5,all:6};
 class St{
   constructor(o){this.hand=o.hand;this.disc=o.disc;this.rem=o.rem;this.held=o.held;this.drinks=o.drinks;this.deck=o.deck;this.effs=o.effs;this.ce=o.ce;
     this.uses=o.uses;this.st=o.st;this.prev=o.prev;this.heat=o.heat;this.extra=o.extra;this.factor=o.factor;this.bonus=o.bonus;this.strB=o.strB;
-    this.pT=o.pT;this.sT=o.sT;this.lT=o.lT;this.dirT=o.dirT;this.nc=o.nc??0;this.cardsUsed=o.cardsUsed;this.turnUsed=o.turnUsed;this.done=o.done;this.em=o.em;this.sTimes=o.sTimes;this.usedTy=o.usedTy;
+    this.pT=o.pT;this.sT=o.sT;this.lT=o.lT;this.dirT=o.dirT;this.nc=o.nc??0;this.nco=o.nco??0;this.fp=o.fp??0;this.cfp=o.cfp??0;this.fpb=o.fpb??0;this.cardsUsed=o.cardsUsed;this.turnUsed=o.turnUsed;this.done=o.done;this.em=o.em;this.sTimes=o.sTimes;this.usedTy=o.usedTy;
     this.score=o.score;this.key=null;}
 }
 const clone=s=>new St(s);
@@ -69,12 +71,16 @@ export function createEngine(data,setup,options={}){
   const cfg={cap:setup.cap??5,trial:setup.trial??1,turnsRemaining:setup.turnsRemaining??1,
     drinkCap:Number.isInteger(setup.drinkCap)?setup.drinkCap:null,drinkBase:(setup.drinks||[]).length};
 
+  // 回数の上限を本体の複数の条件（if:）で共有する書き方はエラー（support.mjs の sharedLimitIfs と同じ。G2 2026-11-05、利用者の決定「見張りだけ」）
+  const sharedLimitIfs=x=>x.kind==='effect'&&x.mods?.limit!=null&&(x.body||[]).filter(b=>b.kind==='effect'&&!b.phase&&b.cond).length>=2;
+  const SHARED_LIMIT_MSG='回数の上限（limit）を複数の条件（if:）で共有する書き方には対応していません（gakumas-tools では条件ごとに別の回数になります）';
   function validateItems(items,where){
     for(const x of items){
       if(x.kind==='action'){
         if(x.op==='call'){if(!CALLS.has(x.name))throw Error('未対応の効果 '+x.name+'（'+where+'）');}
         else if(!(ASSIGN.has(x.lhs)||IGNORED_FIELDS.has(x.lhs)||IGNORED_GROWTH.has(x.lhs)||x.lhs==='g.score'||x.lhs==='g.scoreTimes'))throw Error('未対応の代入 '+x.lhs+'（'+where+'）');
       }else if(x.kind==='effect'){if(x.phase&&!IN_TURN.has(x.phase)&&!LATER.has(x.phase))throw Error('未対応の発動のきっかけ '+x.phase+'（'+where+'）');
+        if(sharedLimitIfs(x))throw Error(SHARED_LIMIT_MSG+'（'+where+'）');
         if(!(x.phase&&LATER.has(x.phase)))validateItems(x.body||[],where);}
     }
   }
@@ -98,7 +104,7 @@ export function createEngine(data,setup,options={}){
     (function f(items){for(const x of items||[]){if(x.kind==='action'&&x.op==='call'&&x.name==='addCardToDeck'){const id=x.args[0]?.t==='num'?x.args[0].v:Number(x.args[0]?.name);const c=data.cards.get(id);if(c)scanCard(c);}
       else if(x.kind==='effect')f(x.body);}})(card.actions);
     (function f(items){for(const x of items||[]){if(x.kind==='action'&&x.op==='call'&&x.name==='addRandomUpgradedSSRCardToHand')for(const id of aojiruPool())scanCard(data.cards.get(id));else if(x.kind==='effect')f(x.body);}})(card.actions);}
-  let readsFrozen=false,heatMono=false;
+  let readsFrozen=false,heatMono=false,cfpProvisional=false,cfpRead=false;
   const keep=f=>f==='pT'||f==='sT'?reads.has(f)||reads.has('pTsT'):reads.has(f);
 
   // ---- 札の種類 ----
@@ -116,6 +122,8 @@ export function createEngine(data,setup,options={}){
     (function walk(n){if(n.kind!=='effect')return;if(n.mods?.limit!=null){n._slot=slots.length;slots.push(n.mods.limit);}for(const b of n.body||[])if(b.kind==='effect'&&!b.phase)walk(b);})(node);
     defs.push({node,slots,phase:node.phase});defIdx.set(node,i);validateItems([node],'効果');prepNode(node);return i;}
   const rec=(d,src=-1)=>({d,l:defs[d].slots.slice(),c:0,src});
+  // コスト0の消費は先に使った札の効果から（Talos と同じ。setup.nullifyCostCardsCarriedFirst、2026-11-05）
+  const carriedGate=n=>setup.nullifyCostCardsCarriedFirst&&JSON.stringify(n,(k,v)=>k.startsWith('_')?undefined:v).includes('nullifyCostCards')?{...n,carriedGate:true}:n;
   const recKey=r=>r.d+':'+r.l.join('.')+':'+r.c+':'+r.src;
   // 札の effects 列の記録の順（発動の順）。Talos と同じく「定義・残り回数・カウンタ・持ち主」の文字列の順。持ち主は、局面の読み込み時に
   // できた種類なら番号（Talos と同じ）、途中の成長でできた種類なら中身（番号はエンジンごとに違うので、並列でも同じ順になるように）
@@ -237,6 +245,7 @@ export function createEngine(data,setup,options={}){
       case 'effectCounter':return (s,c)=>c.rec?c.rec.c:0;
       case 'cardsUsed':return s=>s.cardsUsed;case 'turnCardsUsed':return s=>s.turnUsed;case 'turnsRemaining':return ()=>cfg.turnsRemaining;
       case 'cardUsesRemaining':return s=>s.uses;case 'enthusiasm':return s=>s.heat;case 'score':return s=>s.score;
+      case 'fullPowerCharge':return s=>s.fp;case 'cumulativeFullPowerCharge':return s=>s.cfp;
       case 'usedCardBaseId':return (s,c)=>c.used>=0?types[c.used].card.baseId:-1;case 'usedCardId':return (s,c)=>c.used>=0?types[c.used].card.id:-1;
       case 'none':case 'strength':case 'strength2':case 'preservation':case 'preservation2':case 'leisure':case 'fullPower':return ()=>n;
     }
@@ -288,14 +297,14 @@ export function createEngine(data,setup,options={}){
   // ---- キー ----
   const ch=v=>Number.isInteger(v)&&v>=-1&&v<60000?C(v+33):'\x06'+v+'\x06';
   const sm=v=>v>=-1&&v<60000&&(v|0)===v;
-  const K={prev:false,pT:false,sT:false,lT:false,dirT:false,cardsUsed:false,turnUsed:false,nc:false};
+  const K={prev:false,pT:false,sT:false,lT:false,dirT:false,cardsUsed:false,turnUsed:false,nc:false,fp:false};
   function key(t){
     let k=t.hand+'\x01'+t.disc+'\x01'+t.rem+'\x01'+t.held+'\x01'+t.drinks+'\x01';
     const a=t.deck,b=t.effs,c=t.ce,u=t.uses,h=t.heat,ex=t.extra,fa=t.factor,bo=t.bonus,sb=t.strB,em=t.em;
     if(a<60000&&b<60000&&c<60000&&sm(u)&&sm(h)&&sm(ex)&&sm(fa)&&sm(bo)&&sm(sb)&&sm(t.sTimes)&&em===1)
       k+=C(a+33,b+33,c+33,u+33,t.st+33,h+33,ex+33,fa+33,bo+33,sb+33,t.done+33,t.sTimes+33,t.usedTy+33);
     else k+=ch(a)+ch(b)+ch(c)+ch(u)+ch(t.st)+ch(h)+ch(ex)+ch(fa)+ch(bo)+ch(sb)+ch(t.done)+ch(t.sTimes)+ch(t.usedTy)+'\x07'+ch(em);
-    if(K.prev)k+=ch(t.prev);if(K.pT)k+=ch(t.pT);if(K.sT)k+=ch(t.sT);if(K.lT)k+=ch(t.lT);if(K.dirT)k+=ch(t.dirT);if(K.cardsUsed)k+=ch(t.cardsUsed);if(K.turnUsed)k+=ch(t.turnUsed);if(K.nc)k+='\x08'+ch(t.nc);
+    if(K.prev)k+=ch(t.prev);if(K.pT)k+=ch(t.pT);if(K.sT)k+=ch(t.sT);if(K.lT)k+=ch(t.lT);if(K.dirT)k+=ch(t.dirT);if(K.cardsUsed)k+=ch(t.cardsUsed);if(K.turnUsed)k+=ch(t.turnUsed);if(K.nc)k+='\x08'+ch(t.nc)+(t.nco?'\x09'+ch(t.nco):'');if(K.fp)k+='\x0b'+ch(t.fp)+ch(t.cfp)+ch(t.fpb);
     return k;
   }
 
@@ -363,7 +372,7 @@ export function createEngine(data,setup,options={}){
       for(const e of it.effects){if(!IN_TURN.has(e.phase))continue;const R=rec(defOf(e));R.l=R.l.map(v=>Math.max(0,v-used));effs.push(R);}}}}
     for(const r of setup.registered||[]){const card=data.cards.get(r.card);if(!card)throw Error('未登録の札: '+r.card);
       const nodes=[];(function f(items){for(const x of items)if(x.kind==='effect'){if(x.phase)nodes.push(x);else f(x.body);}})(card.actions);
-      const n=nodes[r.index??0];if(!n)throw Error('登録する効果がありません: '+card.name);const R=rec(defOf(n));R.c=r.counter??0;applyLimits(R,r.limits,false,card.name);effs.push(R);}
+      const n0=nodes[r.index??0];if(!n0)throw Error('登録する効果がありません: '+card.name);const n=carriedGate(n0);const R=rec(defOf(n));R.c=r.counter??0;applyLimits(R,r.limits,false,card.name);effs.push(R);}
     for(const k of Object.keys(piles))for(const x of piles[k]){const card=types[x.ty].card;
       const es=inTurnEffects(card);let li=0;
       for(const e of es){const R=rec(defOf(e),x.ty);const n=R.l.length;applyLimits(R,x.limits?x.limits.slice(li,li+n):null,x.full,card.name);li+=n;if(!deadRec(R))cardEffs.push(R);}
@@ -376,6 +385,16 @@ export function createEngine(data,setup,options={}){
       if(x.name==='addRandomUpgradedSSRCardToHand')for(const id of aojiruPool())scanCard(data.cards.get(id));}else if(x.kind==='effect')f(x.body);}})(dr.actions);}
     for(const r of [...effs,...cardEffs])scanReads([defs[r.d].node]);
     if(options.keepAllFields)for(const f of Object.values(READ_FIELD))reads.add(f);
+    // 全力値（G2 2026-11-05、利用者の依頼）：全力値がコストの札・全力値／累計を読む式・decreaseFullPowerCharge・全力値が増えたときの効果のどれかがあれば数える（fp・cfp・fpb）。
+    // ないときは今までどおり省く（増えるだけで誰も読まない局面の状態を増やさない）。全力の指針への切り替えはターンの始めだけなので、ソリティアの中では起きない
+    {const RE=/"t":"id","name":"(fullPowerCharge|cumulativeFullPowerCharge)"|"name":"decreaseFullPowerCharge"|"phase":"fullPowerChargeIncreased"/;
+      const js=o=>JSON.stringify(o,(k,v)=>k.startsWith('_')?undefined:v);
+      const costFP=c=>(c.cost||[]).some(x=>x.kind==='action'&&x.lhs==='fullPowerCharge');
+      let fp=false;for(const c of scannedCards)if(costFP(c)||RE.test(js([c.usable,c.actions,c.effects]))){fp=true;break;}
+      if(!fp)for(const d of drinks)if(RE.test(js(data.drinks.get(d).actions))){fp=true;break;}
+      if(!fp)for(const r of [...effs,...cardEffs])if(RE.test(js(defs[r.d].node))){fp=true;break;}
+      if(fp||options.keepAllFields)reads.add('fp');
+      cfpRead=fp&&[...scannedCards].some(c=>js([c.actions,c.effects]).includes('cumulativeFullPowerCharge'));cfpProvisional=cfpRead&&setup.cumulativeFullPowerCharge==null;}
     readsFrozen=true;for(const f of Object.keys(K))K[f]=keep(f);
     // 熱意の単調性（支配に使う。2026-11-04）：熱意を式・条件で読まず、得点の倍率が負にならないなら、
     // 「熱意だけが多く、ほかは同じ状態」は、同じ手順で必ず同じか多い得点になる（熱意は得点の計算 a=v+熱意×倍率 にしか使われない）
@@ -392,7 +411,7 @@ export function createEngine(data,setup,options={}){
       drinks:drinks.map(d=>C(BASE+d)).join(''),deck:allStars(msOf(tys('deck'))),effs:effId(effs),ce:effId(cardEffs),
       uses:setup.cardUses??1,st:stanceOf(setup.stance||'preservation'),prev:setup.prevStance&&setup.prevStance!=='none'?stanceOf(setup.prevStance):NONE,
       heat:setup.enthusiasm??0,extra:setup.enthusiasmBonus??0,factor:Math.round((setup.enthusiasmBuff??1)*100),bonus:Math.round((setup.scoreBuff??0)*100),strB:Math.round((setup.strengthEffectBuff??0)*100),
-      pT:setup.preservationTimes??0,sT:setup.strengthTimes??0,lT:setup.leisureTimes??0,dirT:setup.stanceChangedByDirectEffectTimes??0,cardsUsed:setup.cardsUsed??0,turnUsed:setup.turnCardsUsed??0,nc:setup.nullifyCostCards??0,
+      pT:setup.preservationTimes??0,sT:setup.strengthTimes??0,lT:setup.leisureTimes??0,dirT:setup.stanceChangedByDirectEffectTimes??0,cardsUsed:setup.cardsUsed??0,turnUsed:setup.turnCardsUsed??0,fp:K.fp?setup.fullPowerCharge??0:0,cfp:K.fp?setup.cumulativeFullPowerCharge??CFP_PROVISIONAL:0,fpb:K.fp?Math.round((setup.fullPowerChargeBuff??0)*100):0,nc:setup.nullifyCostCardsCarriedFirst&&K.nc?0:(setup.nullifyCostCards??0),nco:setup.nullifyCostCardsCarriedFirst&&K.nc?(setup.nullifyCostCards??0):0,
       done:0,em:1,sTimes:0,usedTy:-1,score:0});
     checkSelfGrowth(t);t.key=key(t);return t;
   }
@@ -452,7 +471,7 @@ export function createEngine(data,setup,options={}){
   // 同じ状態（キーが同じ）の枝をまとめる。キーの文字列は作らず、札の場所の文字列で分けてから、ほかの項目を直接比べる
   const sameRest=(a,b)=>a.deck===b.deck&&a.effs===b.effs&&a.ce===b.ce&&a.uses===b.uses&&a.st===b.st&&a.heat===b.heat&&a.extra===b.extra&&a.factor===b.factor&&
     a.bonus===b.bonus&&a.strB===b.strB&&a.done===b.done&&a.sTimes===b.sTimes&&a.usedTy===b.usedTy&&a.em===b.em&&a.drinks===b.drinks&&
-    (!K.prev||a.prev===b.prev)&&(!K.pT||a.pT===b.pT)&&(!K.sT||a.sT===b.sT)&&(!K.lT||a.lT===b.lT)&&(!K.dirT||a.dirT===b.dirT)&&(!K.cardsUsed||a.cardsUsed===b.cardsUsed)&&(!K.nc||a.nc===b.nc)&&(!K.turnUsed||a.turnUsed===b.turnUsed);
+    (!K.prev||a.prev===b.prev)&&(!K.pT||a.pT===b.pT)&&(!K.sT||a.sT===b.sT)&&(!K.lT||a.lT===b.lT)&&(!K.dirT||a.dirT===b.dirT)&&(!K.cardsUsed||a.cardsUsed===b.cardsUsed)&&(!K.nc||(a.nc===b.nc&&a.nco===b.nco))&&(!K.fp||(a.fp===b.fp&&a.cfp===b.cfp&&a.fpb===b.fpb))&&(!K.turnUsed||a.turnUsed===b.turnUsed);
   function merge(l){if(l.length<2)return l;const m=new Map(),out=[];
     for(const c of l){const zk=c.s.hand+'\x01'+c.s.disc+'\x01'+c.s.rem+'\x01'+c.s.held;let g=m.get(zk);
       if(!g){g=[];m.set(zk,g);}let o=null;for(const x of g)if(sameRest(x.s,c.s)){o=x;break;}
@@ -508,6 +527,7 @@ export function createEngine(data,setup,options={}){
       for(let j=0;j<plan.length;j+=2){const field=plan[j]?'ce':'effs',i=plan[j+1];
         cur=each(cur,t=>{const r=effTab[t[field]][i];const node=defs[r.d].node;
           return runEffectNode(one(t),node,t,{used:ctx.used,phase,parent:ctx.parent,inCard:false,select:ctx.select,recField:field,recIdx:i,src:r.src});});}
+      if(plan.includes(1))cur=each(cur,t=>{const a=effTab[t.ce];for(let k=1;k<a.length;k++)if(cmpRec(a[k-1],a[k])>0){t.ce=effId(a.slice().sort(cmpRec));break;}return one(t);});   // 記録の並びを戻す
       return cur;
     });
   }
@@ -516,6 +536,7 @@ export function createEngine(data,setup,options={}){
     return each(list,s=>{
       const r=ctx.recField?effTab[s[ctx.recField]][ctx.recIdx]:null;
       if(node._slot!==undefined&&r&&r.l[node._slot]<1)return one(s);
+      if(node.carriedGate&&snap.nco>0)return one(s);   // Talos と同じ（先に使った全身全霊の分が残る間は、後に使った札のコスト0は使わない）
       if(node.cond){const sr=ctx.recField?effTab[snap[ctx.recField]][ctx.recIdx]:null;
         if(!exprFn(node.cond)(snap,{used:ctx.used,phase:ctx.phase,parent:ctx.parent,rec:sr}))return one(s);}
       if(options.limitOnCond!==false&&node._slot!==undefined&&r){const g=condGate(node);if(g){const sr=ctx.recField?effTab[snap[ctx.recField]][ctx.recIdx]:null;const c2={used:ctx.used,phase:ctx.phase,parent:ctx.parent,rec:sr};
@@ -562,6 +583,9 @@ export function createEngine(data,setup,options={}){
         case 'setEnthusiasmBuff':{const v=arg(0);return each(list,t=>{t.factor+=Math.round(v*100);return one(t);});}
         case 'setEnthusiasmBonus':{const v=arg(0);return each(list,t=>{t.extra+=v;return one(t);});}
         case 'setStrengthEffectBuff':{const v=arg(0);return each(list,t=>{t.strB+=Math.round(v*100);return one(t);});}
+        // 全力値（数えるときだけ）：増加の倍率を足す（ターン数はソリティアの中では関係しない）・全力値を減らす（0 未満にしない）
+        case 'setFullPowerChargeBuff':{if(!K.fp)return list;const v=arg(0);return each(list,t=>{t.fpb+=Math.round(v*100);return one(t);});}
+        case 'decreaseFullPowerCharge':{if(!K.fp)return list;const v=arg(0);return each(list,t=>{t.fp=Math.max(0,t.fp-v);return one(t);});}
       }
       if(IGNORED_CALLS.has(a.name))return list;
       throw Error('未対応の効果: '+a.name);
@@ -569,9 +593,20 @@ export function createEngine(data,setup,options={}){
     const L=a.lhs;
     // コストを0にする残り回数（nullifyCostCards）：体力が減ったら発動する効果がある局面だけ数える（原点へのチケット。利用者の確認：全身全霊は体力のコストも0。2026-11-04）
     if(L==='nullifyCostCards'&&K.nc){if(a.op!=='+=')throw Error('nullifyCostCards の '+a.op+' は未対応');const v=exprFn(a.rhs)(snap,ctx);return each(list,t=>{t.nc+=v;return one(t);});}
+    // 全力値（数えるときだけ。gakumas-tools の resolveFullPowerCharge と同じ）：増えるときは札の成長（全力値+）を足し、増加の倍率を掛けて、累計にも足し、
+    // fullPowerChargeIncreased を発動する。減るときはそのまま引く
+    if(L==='fullPowerCharge'&&K.fp){const v=exprFn(a.rhs)(snap,ctx);
+      return each(list,t=>{let x=v;
+        if(a.op==='+='){if(ctx.inCard&&ctx.phase==='processCard'&&t.usedTy>=0)x+=types[t.usedTy].card.startGrowth?.fullPowerCharge??0;
+          if(x>0){x=x*(100+t.fpb)/100;t.cfp+=x;t.fp+=x;return ctx.phase==='processCard'||ctx.phase==='processCost'?trigger(one(t),'fullPowerChargeIncreased',{...ctx,parent:ctx.phase}):one(t);}   // 増えたときの効果は札を使っている間だけ（gakumas-tools の needsChangeTrigger）
+          t.fp+=x;return one(t);}
+        if(a.op==='-='){t.fp-=x;return one(t);}
+        throw Error('fullPowerCharge の '+a.op+' は未対応');});}
     if(IGNORED_FIELDS.has(L)||IGNORED_GROWTH.has(L))return list;
-    const v=exprFn(a.rhs)(snap,ctx);
-    return each(list,t=>{
+    // 全力値・累計を読む式は、その時点の状態で計算する（gakumas-tools は式をその時点の状態で計算する。ラッシュ「全力値+3、累計分の点」は +3 の後の累計。G2 2026-11-05）
+    const cur=K.fp&&readsFP(a.rhs);const v=cur?0:exprFn(a.rhs)(snap,ctx);
+    return each(list,t=>{const v2=cur?exprFn(a.rhs)(t,ctx):v;return assign(t,v2);});
+    function assign(t,v){
       switch(L){
         case 'score':{
           if(a.op!=='+=')throw Error('score の '+a.op+' は未対応');
@@ -587,12 +622,13 @@ export function createEngine(data,setup,options={}){
           const r=effTab[t[ctx.recField]][ctx.recIdx];setRec(t,ctx,{d:r.d,l:r.l,c:a.op==='+='?r.c+v:v,src:r.src});return one(t);}
       }
       throw Error('未対応の代入: '+L);
-    });
+    }
   }
   // 成長（engine.mjs の growTargets と同じ）
   function growTargets(list,target,body,ctx){
     const deltas={score:0,scoreTimes:0};
     for(const x of body){if(x.kind!=='action')throw Error('成長の書き方が未対応');
+      if(K.fp&&(x.lhs==='g.fullPowerCharge'||x.lhs==='g.typedCost')&&fpGrowthHits(x.lhs,target,ctx))throw Error('使っている途中の全力値・コストの成長（'+x.lhs+'）は未対応（全力値の札に当たる）');
       if(IGNORED_GROWTH.has(x.lhs))continue;
       if(x.op!=='+=')throw Error('成長の書き方が未対応: '+x.lhs+x.op);
       if(x.lhs==='g.score')deltas.score+=exprFn(x.rhs)(null,ctx);else if(x.lhs==='g.scoreTimes')deltas.scoreTimes+=exprFn(x.rhs)(null,ctx);else throw Error('未対応の成長: '+x.lhs);}
@@ -603,7 +639,8 @@ export function createEngine(data,setup,options={}){
       if(isThis&&ctx.recField==='ce'){
         const src=effTab[t.ce][ctx.recIdx].src,to=g(src);
         if(!growOne(t,src,to))throw Error('成長させる札が見つかりません');
-        const arr=effTab[t.ce].slice();const r=arr[ctx.recIdx];arr[ctx.recIdx]={d:r.d,l:r.l,c:r.c,src:to};arr.sort(cmpRec);t.ce=effId(arr);
+        // 並べ替えは発動が全部終わってから（trigger の最後）。途中で並べ替えると、同じ発動の残りの記録の番号がずれ、同じ札を2回成長させていた（G2 2026-11-05、ラッシュ2枚で見つけた）
+        const arr=effTab[t.ce].slice();const r=arr[ctx.recIdx];arr[ctx.recIdx]={d:r.d,l:r.l,c:r.c,src:to};t.ce=effId(arr);
         return one(t);
       }
       if(isThis){if(t.usedTy<0)throw Error('this の札がありません');t.usedTy=g(t.usedTy);return one(t);}
@@ -675,8 +712,9 @@ export function createEngine(data,setup,options={}){
     const card=types[ty].card;const ctx={used:ty,phase:null,parent:null,inCard:true,select,noSelect};
     let cur=trigger(list,'beforeCardUsed',ctx);
     cur=each(cur,t=>{if(from==='hand')t.hand=msDel(t.hand,ty);if(!free)t.uses-=1;t.usedTy=ty;return one(t);});
+    if(!free&&K.fp){const n=fpCost(ty);if(n)cur=each(cur,t=>{t.fp-=n;return one(t);});}   // 全力値のコストを払う
     // コストの処理：コストを0にする残りがあれば1回使い（体力も減らない）、なければ stamina-= の札で staminaDecreased
-    if(!free){const dsc=directStaminaCost(card),pc=positiveCost(card);if(K.nc||dsc)cur=each(cur,t=>{if(K.nc&&pc&&t.nc>0){t.nc--;return one(t);}return dsc?trigger(one(t),'staminaDecreased',{...ctx,parent:'processCost'}):one(t);});}
+    if(!free){const dsc=directStaminaCost(card),pc=positiveCost(card);if(K.nc||dsc)cur=each(cur,t=>{if(K.nc&&pc&&t.nco>0){t.nco--;return one(t);}if(K.nc&&pc&&t.nc>0){t.nc--;return one(t);}return dsc?trigger(one(t),'staminaDecreased',{...ctx,parent:'processCost'}):one(t);});}
     cur=trigger(cur,'cardUsed',ctx);
     const pctx={used:ty,phase:'processCard',parent:null,inCard:true,select,noSelect};const ns=needsSnap(card.actions);
     cur=each(cur,t=>{t.em=1;t.sTimes=types[ty].g.scoreTimes;return runItems(one(t),card.actions,ns?clone(t):t,pctx);});
@@ -698,6 +736,17 @@ export function createEngine(data,setup,options={}){
   }
 
   // ---- 合法手 ----
+  const RFP=new WeakMap();const readsFP=e=>{let v=RFP.get(e);if(v===undefined){v=/"t":"id","name":"(fullPowerCharge|cumulativeFullPowerCharge)"/.test(JSON.stringify(e));RFP.set(e,v);}return v;};
+  // 使っている途中の成長「コスト値-」（g.typedCost）・「全力値+」（g.fullPowerCharge）が、全力値がコストの札・全力値を増やす札に当たるか（当たらなければ今までどおり省く。
+  // 例：エンターテイナーの自分のコスト値-は体力のコストなので関係しない）。当たるときは未対応としてエラー（黙って誤らない）
+  const fpRel=(lhs,ty)=>{const c=types[ty].card;return lhs==='g.typedCost'?(c.cost||[]).some(x=>x.kind==='action'&&x.lhs==='fullPowerCharge'):/"lhs":"fullPowerCharge"/.test(JSON.stringify(c.actions));};
+  function fpGrowthHits(lhs,target,ctx){if(target.t==='id'&&target.name==='this'){const o=ctx.recField==='ce'?ctx.src:ctx.used;return o!=null&&o>=0&&fpRel(lhs,o);}
+    const m=targetFn(target);for(let ty=0;ty<types.length;ty++)if(fpRel(lhs,ty)&&['hand','deck','discard','removed','held','used'].some(l=>m(ty,l)))return true;return false;}
+  // 全力値のコスト（fullPowerCharge-=N）。カスタマイズ「全力値コスト値-」（g.typedCost）で減らす。足りないと使えない（gakumas-tools の isCardUsable と同じ）
+  const fpCostMemo=new Map();
+  function fpCost(ty){let v=fpCostMemo.get(ty);if(v!==undefined)return v;const card=types[ty].card;v=0;
+    for(const x of card.cost||[])if(x.kind==='action'&&x.lhs==='fullPowerCharge'){if(x.op!=='-='||x.rhs?.t!=='num')throw Error('全力値のコストの書き方が未対応（'+card.name+'）');v+=Math.max(0,x.rhs.v-(card.startGrowth?.typedCost??0));}
+    fpCostMemo.set(ty,v);return v;}
   function usableCard(s,ty){const u=types[ty].usable;if(!u.length)return true;const ctx={used:ty,phase:null,parent:null};for(const f of u)if(!f(s,ctx))return false;return true;}
   function selOf(ty){const t=types[ty];if(t.sel===undefined)t.sel=findSelect(t.card.actions,t.card.name);return t.sel;}
   const drinkSel=new Map();
@@ -705,7 +754,7 @@ export function createEngine(data,setup,options={}){
     if(s.done)return [];
     const out=[];
     if(s.uses>0){
-      msRuns(s.hand,ty=>{if(!usableCard(s,ty))return;const c=types[ty].card;const sel=selOf(ty);
+      msRuns(s.hand,ty=>{if(!usableCard(s,ty))return;if(K.fp&&s.fp<fpCost(ty))return;const c=types[ty].card;const sel=selOf(ty);
         // 条件つきの選択は、使う前の状態で条件を判定する。手札から選ぶときは、使う札そのもの（1枚）を除く（効果の前に手札から出ている）
         if(sel&&(!sel.cond||exprFn(sel.cond)(s,{used:ty,phase:null,parent:null}))){const opts=selectable({disc:s.disc,hand:msDel(s.hand,ty),deck:s.deck},sel.target);
           if(opts.length)for(const x of opts)out.push({type:'card',ty,id:c.id,name:c.name,select:x});else out.push({type:'card',ty,id:c.id,name:c.name,noSelect:true});}
@@ -769,7 +818,7 @@ export function createEngine(data,setup,options={}){
   const msDesc=z=>msIds(z).map(typeDesc).sort();
   const descTy=x=>{const [k,gs,gt]=x.split('|');return typeOf(/^-?\d+$/.test(k)?Number(k):k,{score:Number(gs),scoreTimes:Number(gt)});};
   const recCanon=r=>[defPath(r.d),r.l,r.c,r.src<0?null:typeDesc(r.src)];
-  const scal=t=>[t.uses,t.st,t.heat,t.extra,t.factor,t.bonus,t.strB,t.done,t.em,t.sTimes,t.usedTy,K.prev?t.prev:0,K.pT?t.pT:0,K.sT?t.sT:0,K.lT?t.lT:0,K.dirT?t.dirT:0,K.cardsUsed?t.cardsUsed:0,K.turnUsed?t.turnUsed:0,...(K.nc?[t.nc]:[])];
+  const scal=t=>[t.uses,t.st,t.heat,t.extra,t.factor,t.bonus,t.strB,t.done,t.em,t.sTimes,t.usedTy,K.prev?t.prev:0,K.pT?t.pT:0,K.sT?t.sT:0,K.lT?t.lT:0,K.dirT?t.dirT:0,K.cardsUsed?t.cardsUsed:0,K.turnUsed?t.turnUsed:0,...(K.nc?[t.nc,t.nco]:[0,0]),...(K.fp?[t.fp,t.cfp,t.fpb]:[])];
   const beliefCanonCache=new Map();
   function beliefCanon(bid){let v=beliefCanonCache.get(bid);if(v!==undefined)return v;
     v=beliefs[bid].cands.map(c=>[JSON.stringify([msDesc(c.bag),c.segs.map(([n,f])=>[n,msDesc(f)])]),c.w]).sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:0).map(([k,w])=>[w[0],w[1],k]);
@@ -791,9 +840,9 @@ export function createEngine(data,setup,options={}){
     if(!pathOf)buildPaths();
     const recOf=([p,l,c,src])=>{const node=nodeOfPath.get(p);if(!node)throw Error('効果の場所が分かりません: '+p);return {d:defOf(node),l,c,src:src===null?-1:descTy(src)};};
     const eid=(x,sort)=>{const k=(sort?'s':'u')+x;let v=ecRev.get(k);if(v===undefined){const list=JSON.parse(x).map(recOf);if(sort)list.sort(cmpRec);v=effId(list);ecRev.set(k,v);}return v;};
-    const [uses,st,heat,extra,factor,bonus,strB,done,em,sTimes,usedTy,prev,pT,sT,lT,dirT,cardsUsed,turnUsed,nc=0]=sc.split(',').map(Number);
+    const [uses,st,heat,extra,factor,bonus,strB,done,em,sTimes,usedTy,prev,pT,sT,lT,dirT,cardsUsed,turnUsed,nc=0,nco=0,fp=0,cfp=0,fpb=0]=sc.split(',').map(Number);
     const t=new St({hand:ms(hand),disc:ms(disc),rem:ms(rem),held:hs(held),drinks,
-      deck:bid,effs:eid(effs,false),ce:eid(ce,true),uses,st,prev,heat,extra,factor,bonus,strB,pT,sT,lT,dirT,cardsUsed,turnUsed,nc,done,em,sTimes,usedTy,score});
+      deck:bid,effs:eid(effs,false),ce:eid(ce,true),uses,st,prev,heat,extra,factor,bonus,strB,pT,sT,lT,dirT,cardsUsed,turnUsed,nc,nco,fp,cfp,fpb,done,em,sTimes,usedTy,score});
     checkSelfGrowth(t);t.key=key(t);return t;}
   // 合法手の中身で決まる名前（並列のとき、合法手の順をそろえる）
   const canonAct=a=>a.type+':'+(a.type==='card'?typeDesc(a.ty):a.type==='drink'?a.id:'')+(a.select?':'+typeDesc(a.select.ty)+':'+a.select.from:'');
@@ -807,7 +856,10 @@ export function createEngine(data,setup,options={}){
     describe:s=>({hand:ms(s.hand),discard:ms(s.disc),removed:ms(s.rem),held:[...s.held].map(c=>name(c.charCodeAt(0)-BASE)),
       deck:beliefs[s.deck].cands.map(c=>({p:c.w[0]+'/'+c.w[1],bag:ms(c.bag),segs:c.segs.map(([n,f])=>({stars:n,fixed:ms(f)}))})),
       uses:s.uses,stance:STANCES[s.st],prevStance:s.prev===NONE?'none':STANCES[s.prev],enthusiasm:s.heat,extra:s.extra,factor:s.factor,bonus:s.bonus,score:s.score,done:!!s.done,
-      drinks:msIds(s.drinks),times:{preservation:s.pT,strength:s.sT,leisure:s.lT,direct:s.dirT},...(K.nc?{nullifyCostCards:s.nc}:{})})};
+      drinks:msIds(s.drinks),times:{preservation:s.pT,strength:s.sT,leisure:s.lT,direct:s.dirT},...(K.nc?(s.nco?{nullifyCostCards:s.nco+s.nc,nullifyCostCardsCarriedFirst:true}:{nullifyCostCards:s.nc}):{}),...(K.fp?{fullPowerCharge:s.fp,cumulativeFullPowerCharge:s.cfp,fullPowerChargeBuff:s.fpb/100}:{})}),
+    // GUI の入力欄（G2 2026-11-05）：全力値を数える局面なら「今の全力値」、累計を読む札があれば「累計の全力値」を出す
+    inputs:{fullPowerCharge:K.fp,cumulativeFullPowerCharge:cfpRead},
+    notes:cfpProvisional?['累計の全力値は入力がないため暫定 '+CFP_PROVISIONAL+' で計算しています（ブースト・ラッシュなど累計を使う札の点は目安）']:[]};
 }
 // 多重集合の異なる並べ方をすべて（-1 は★）
 function distinctPerms(a){const out=[];const cnt=new Map();for(const x of a)cnt.set(x,(cnt.get(x)||0)+1);const keys=[...cnt.keys()].sort((x,y)=>x-y);const cur=[];

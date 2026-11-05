@@ -98,6 +98,7 @@ function resultView(R, rerender, {checkList} = {}) {
   const add = (...xs) => box.append(...xs.filter(x => x));   // false・null は出さない
   add(h('div.ansHead', {}, h('span.status', {class: stCls, title: stDesc}, stName + (R.canceled ? '（中止）' : '')),
     h('span.hint', `${critText(R.criterion).replace('100%にできれば100%、できなければ届く最大の達成率', '届く最大の達成率')}・${(R.ms / 1000).toFixed(1)}秒`)));
+  for (const n of R.notes || []) add(h('p.warnline', n));   // 計算の部品の注意書き
   if (R.followed) add(h('p.hint', '前の局面の最適の答えから読み出しました（計算し直していません。答えは計算し直したときと同じです）。'));
   if (R.keptPrev) add(h('p.hint', '予算を増やして計算し直しましたが、前の答えより良い答えは見つからなかったので、前の答えを残しました。'));
   // 達成率を指定した計算（95% など）で、その達成率に届かない暫定の答え
