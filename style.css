@@ -317,3 +317,6 @@ button.ttv b { font-size: 16px; }
 .altans { margin: 10px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 .altans .altline { flex: 1 1 260px; }
 .altans .altnext { color: var(--sub); }
+/* 答えの見出しの小さな印（即答・前の計算を使用 など） */
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+.tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--infobg); color: var(--info); cursor: help; }

@@ -2,7 +2,7 @@
 // プレイの案内は同じ欄の中で進む（「使った」→「何を引いた？」→ 次の手）。比較表・自然さ・答えの確かさは「詳しく」にたたむ。
 import {D} from './data.js';
 import {S, save, deck, STANCES} from './store.js';
-import {h, pic, fmt, toast} from './ui.js';
+import {h, pic, fmt, toast, qtip} from './ui.js';
 import {RUN, startRun, cancelRun, betterThan, resumeRun, canResume, phaseSig} from './run.js';
 import {validate, entries, zoneOf} from './phase.js';
 import {STATUS, orderText, critText} from './result.js';
@@ -83,10 +83,9 @@ function nextView(R, interim) {
   const b = R.best;
   return h('div.nextv', {},
     h('div.nmain', {}, R.nextIcon ? pic(R.nextIcon.kind, R.nextIcon.id, R.next, 64) : null, h('div.ntext', R.next || '—')),
-    b && h('div.kpis', {}, kpi('達成率', b.pText), kpi('ドリンク', num3(b.dNum), '本'), kpi('手数', num3(b.aNum), '回')),
-    b && !interim && h('div.kpinote', 'ドリンク・手数は、引く札によって変わる数の見込み（平均）です。'));
+    b && h('div.kpis', {}, kpi('達成率', b.pText, '', '目標点に届く確率'), kpi('ドリンク', num3(b.dNum), '本', 'このあと使うドリンクの本数の見込み（引く札によって変わる数の平均）'), kpi('手数', num3(b.aNum), '回', 'このあと札やドリンクを使う回数の見込み（平均）')));
 }
-const kpi = (label, v, unit = '') => h('div.kpi', {}, h('div.kl', label), h('div.kv', v, h('small', unit)));
+const kpi = (label, v, unit = '', tip = '') => h('div.kpi', {}, h('div.kl', label, tip && qtip(tip)), h('div.kv', v, h('small', unit)));
 
 function resultView(R, rerender, {checkList} = {}) {
   // エンジンが「全体で最適とは証明できていない」と言うときは、最適と出さない（optimalityProven、AEGIS_SPEC.md 8章）
@@ -99,14 +98,15 @@ function resultView(R, rerender, {checkList} = {}) {
   add(h('div.ansHead', {}, h('span.status', {class: stCls, title: stDesc}, stName + (R.canceled ? '（中止）' : '')),
     h('span.hint', `${R.criterion === 'max' ? '達成率最大の答え' : `${R.criterion}%で良ければの答え`}・${(R.ms / 1000).toFixed(1)}秒`)));
   for (const n of R.notes || []) add(h('p.warnline', n));   // 計算の部品の注意書き
-  if (R.followed) add(h('p.hint', '前の局面の最適の答えから読み出しました（計算し直していません。答えは計算し直したときと同じです）。'));
-  if (R.keptPrev) add(h('p.hint', '予算を増やして計算し直しましたが、前の答えより良い答えは見つからなかったので、前の答えを残しました。'));
+  const tags = [R.followed && ['前の答えから即答', '前の局面の答えから読み出しました（計算し直していません。答えは計算し直したときと同じです）'],
+    R.retargeted && ['前の計算を使用', '同じ局面の前の計算を使って、目標・基準を変えた答えを出しました（答えは計算し直したときと同じです）'],
+    R.keptPrev && ['前の答えを残した', '予算を増やして計算し直しましたが、前の答えより良い答えは見つからなかったので、前の答えを残しました']].filter(Boolean);
+  if (tags.length) add(h('div.tags', {}, tags.map(([t, d]) => h('span.tag', {title: d}, t))));
   // 達成率を指定した計算（95% など）で、その達成率に届かない暫定の答え
   if (R.meetsAlpha === false && R.criterion !== 'max') add(h('p.warnline', `この答えは、指定した達成率 ${R.criterion}% に届いていません。時間内に見つかった中で一番よい手順です。「続きから計算する」で届く手順が見つかることがあります。`));
   const ms = R.maxScore;
   if (b && b.pNum === 0 && kind === 'optimal') add(h('p.warnline', '目標点に届く手順がありません（届く最大 0%）。' + (ms?.exact && !ms.reached ? `どう引いても、最大で ${fmt(ms.value)} 点です。` : '')));
   else if (ms?.exact && !ms.reached) add(h('p.hint', `どう打っても、取れる点は最大で ${fmt(ms.value)} 点です（目標点に届かない）。`));
-  if (R.retargeted) add(h('p.hint', '同じ局面の前の計算を使って、目標・基準を変えた答えを出しました（答えは計算し直したときと同じです）。'));
   // プレイの案内（同じ欄の中で進む）
   if (R.tree) {
     S.play ||= {steps: []};
@@ -120,7 +120,7 @@ function resultView(R, rerender, {checkList} = {}) {
         makeErr && h('p.warnline', '作れませんでした：' + makeErr));
     } else if (waiting) {
       add(h('div.lbl', '何を引きましたか？'),
-        h('p.hint', '使った後の手札（全部）です。色の枠が、ドロー札（新しく来た札）です。'),
+        h('p.hint', '使った後の手札（色の枠＝ドロー札）'),
         h('div.draws', node.edges.map((e, i) => h('button.drawbtn', {onclick: () => push({type: 'draw', i, label: drawnText(e.drawn)})},
           h('div.dpics', (e.hand || e.drawn).slice(0, 6).map(x => h('span.hcard', {class: x.isNew !== false ? 'new' : 'old'}, pic('cards', x.id, x.name, 34)))),
           h('b', drawnText(e.drawn)),
@@ -150,16 +150,14 @@ function resultView(R, rerender, {checkList} = {}) {
     // メモリの上限で止まり、試せる段も残っていない：時間を足しても良くならないので、計算し直すボタンは出さず、局面を軽くする方法を案内する
     const memStop = !R.resumable && /MEMORY_LIMIT|GROWTH_LIMIT/.test(R.resumeReason || '');
     if (memStop) { add(h('div.budget', {},
-      h('p.hint', {title: R.resumeReason}, 'これ以上計算しても、このブラウザでは答えを良くできません（使えるメモリの上限）。今の答えは、ここまでに見つかった一番よい手順です。'),
-      h('p.hint', '引いた札が決まったら「ここから局面を作る」で計算し直すと、最善の手が分かることがあります。「詳しい条件」でドリンクの上限を入れると、計算が軽くなります。'))); }
+      h('p.hint', 'このブラウザでは、これ以上良くできません（メモリの上限）', qtip('今の答えは、ここまでに見つかった一番よい手順です。引いた札が決まったら「ここから局面を作る」で計算し直すと、最善の手が分かることがあります。「詳しい条件」でドリンクの上限を入れると、計算が軽くなります。（' + (R.resumeReason || '') + '）')))); }
     else add(h('div.budget', {},
-      b && b.pNum === 0 ? h('p.warnline', 'この予算の中では、目標点に届く手順がまだ見つかっていません（届かないと決まったわけではありません）。下のボタンで見つかることがあります。')
-        : h('p.hint', '時間内に見つけた答えです。もっと良い答えがあるかもしれません（計算の時間は「設定 ▾」→「設定」で変えられます）。'),
+      b && b.pNum === 0 ? h('p.warnline', 'まだ目標点に届く手順が見つかっていません', qtip('届かないと決まったわけではありません。「続きから計算する」で見つかることがあります'))
+        : null,
       resumeOk
         ? h('button.wide', {disabled: !!checkList?.querySelector?.('.err'), onclick: () => resumeRun(addSec)}, `続きから計算する（＋${addSec}秒。ここまでの計算を使う）`)
         : h('button.wide', {disabled: !!checkList?.querySelector?.('.err'), onclick: () => recompute({budgetSec: sec, maxStates: states}, {keep: true})}, `予算を2倍にして計算し直す（${sec}秒・状態 ${fmt(states)}）`),
-      !resumeOk && R.resumeReason && h('p.hint', '続きからはできません：' + R.resumeReason),
-      R.resumedSec ? h('p.hint', `ここまでの計算：${R.budgetSec}秒（うち続きから ${R.resumedSec}秒）`) : null));
+      !resumeOk && R.resumeReason && h('p.hint', '続きからはできません', qtip(R.resumeReason))));
   }
 
 

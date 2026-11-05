@@ -62,14 +62,14 @@ export function validate(dk, P) {
   for (const id of dk.items) if (/strengthTimes>=4/.test(D.items.find(x => x.id === id)?.text || '') && p.strengthTimes < 4) info(`${D.items.find(x => x.id === id).name}：強気の回数が ${p.strengthTimes} 回なので、まだ発動しません（4回以上で発動）`);
   // 全力値：全力値を使う札があるのに空欄なら、0 として計算する（全力値がコストの札は使えない）
   const fpn = fpNeeds(dk, P);
-  if (fpn.fp && (p.fullPowerCharge === null || p.fullPowerCharge === undefined)) warn('全力値が空欄です。0 として計算します（アンダンテなど、全力値がコストの札は使えません）。ゲームの画面の全力値を入れてください');
-  if (fpn.cfp && (p.cumulativeFullPowerCharge === null || p.cumulativeFullPowerCharge === undefined)) info('累計の全力値が空欄です。仮に 7 として計算します（ブースト・ラッシュなど、累計を使う札の点は目安になります）');
+  if (fpn.fp && (p.fullPowerCharge === null || p.fullPowerCharge === undefined)) warn('全力値が空欄です（0 として計算。全力値がコストの札は使えません）');
+  if (fpn.cfp && (p.cumulativeFullPowerCharge === null || p.cumulativeFullPowerCharge === undefined)) info('累計の全力値が空欄です（仮に 7 として計算）');
   // 入力の食い違い：熱意倍率を上げる P アイテム（原点へのチケットなど）が発動済みなのに、熱意倍率がその分より小さい
   for (const id of dk.items) {
     const inf = itemInputs(id); if (!inf) continue;
     const st = P.itemState?.[id] || {};
     const add = inf.inputs.filter(x => x.key === 'fired').reduce((a, x, i) => a + (x.enthusiasmBuffPerUse || 0) * firedOf(st, i, x.max), 0);
-    if (add > 0 && (p.enthusiasmBuff ?? 1) + 1e-9 < 1 + add) warn(`${inf.name}：発動済みの分だけで熱意倍率が＋${Math.round(add * 100)}% になるはずですが、熱意倍率が＋${Math.round(((p.enthusiasmBuff ?? 1) - 1) * 100)}% です（ゲームの表示の値を入れてください）`);
+    if (add > 0 && (p.enthusiasmBuff ?? 1) + 1e-9 < 1 + add) warn(`熱意倍率（＋${Math.round(((p.enthusiasmBuff ?? 1) - 1) * 100)}%）が、${inf.name}の発動分（＋${Math.round(add * 100)}%）より小さいです`);
   }
   return out;
 }

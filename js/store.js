@@ -8,7 +8,8 @@ export const STANCES = [['preservation', '温存'], ['preservation2', '温存2�
 
 export const defaultSettings = () => ({
   order: 'dpa',              // 比べる順（既定 D→P→A。Tomahawk の DEFAULT_ORDER と同じ）
-  criterion: 'max',          // 'max'＝100%にできれば100%、できなければ届く最大の達成率（既定）。'95'・'99'・'100'＝その達成率以上で比べる
+  criterion: 'max',          // 1.8.0 から使わない（下の both で決める）
+  both: true,                // 95%の答えも出す（達成率最大と並べる）。外すと達成率最大だけ（速い）          // 'max'＝100%にできれば100%、できなければ届く最大の達成率（既定）。'95'・'99'・'100'＝その達成率以上で比べる
   extras: {ev: false, floor: false}, // 自然さの指標（チェックしたときだけ）
   budgetSec: 60, maxStates: 20000000,
   images: true,

@@ -50,8 +50,8 @@ export function startRun(over = {}, {keep = false} = {}) {
   const {setup, target} = buildSetup({deck: dk, phase: P, cards: cardsMap(), items: itemsFor(deck())});
   const phase0 = structuredClone(P);   // 計算した局面（次のターンの局面を作るときの元）
   const st = S.settings;
-  // 達成の基準は「達成率最大」と「95%」を並べて出す形に固定（1.8.0、利用者の決定。設定の基準はやめた）
-  const opts = {criterion: '95', both: true, order: st.order, extras: ['ev', 'floor'].filter(k => st.extras[k]), maxMs: Math.max(1, over.budgetSec ?? st.budgetSec) * 1000, maxStates: over.maxStates ?? st.maxStates};
+  // 達成の基準：設定「95%の答えも出す」（既定オン）なら達成率最大と95%を並べて出す。外すと達成率最大だけ（速い）。1.8.1、利用者の決定
+  const opts = {...(st.both === false ? {criterion: 'max'} : {criterion: '95', both: true}), order: st.order, extras: ['ev', 'floor'].filter(k => st.extras[k]), maxMs: Math.max(1, over.budgetSec ?? st.budgetSec) * 1000, maxStates: over.maxStates ?? st.maxStates};
   lastOpts = opts;
   Object.assign(RUN, {status: 'running', stage: '準備中', started: Date.now(), interim: null, error: null, prev});
   S.result = null; S.play = null; save();
