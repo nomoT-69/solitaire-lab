@@ -34,8 +34,8 @@ function render() {
       // たまに使うものは、右の2つのメニューにまとめる（ヘルプ：概要・使い方・報告、設定：札の設定・設定・クレジット）
       h('nav.subtabs', {},
         h('button.menu', {onclick: e => popover(e.currentTarget, '', [
-          {label: '概要（はじめての方へ・6ページ）', onclick: () => window.open('manual/summary.html', '_blank', 'noopener')},
-          {label: '使い方（詳細マニュアル・20ページ）', onclick: () => window.open('manual/index.html', '_blank', 'noopener')},
+          {label: '概要（はじめての方へ）', onclick: () => window.open('manual/summary.html', '_blank', 'noopener')},
+          {label: '使い方（詳細マニュアル）', onclick: () => window.open('manual/index.html', '_blank', 'noopener')},
           {label: '答えがおかしい？ 報告用の情報をコピー', onclick: copyReport}])}, 'ヘルプ ▾'),
         h('button.menu', {class: SUB.some(([k]) => k === tab[0]) ? 'on' : '', onclick: e => popover(e.currentTarget, '', SUB.map(([k, t]) => ({label: t, disabled: k === tab[0], onclick: () => go(k)})))},
           (SUB.find(([k]) => k === tab[0])?.[1] || '設定') + ' ▾'))),

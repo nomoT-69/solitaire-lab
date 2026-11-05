@@ -50,6 +50,10 @@ header { position: sticky; top: 0; z-index: 10; display: flex; align-items: cent
 .subtabs { margin-left: auto; display: flex; gap: 4px; }
 .subtabs button { border: none; background: none; color: var(--sub); font-size: 14px; padding: 4px 10px; border-radius: 6px; }
 .subtabs button.on { background: var(--acc2); color: var(--ink); font-weight: 700; }
+.tabs button, .subtabs button, .zt b { white-space: nowrap; }
+@media (max-width: 700px) { header { flex-wrap: wrap; height: auto; gap: 4px 12px; padding: 6px 12px; } .tabs { height: 40px; } .deckpick { max-width: 100%; } }
+.draws.chips { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+.picked { gap: 10px; align-items: center; font-size: 14px; margin: 4px 0; }
 .tabs.small { height: auto; } .tabs.small button { height: auto; padding: 6px 10px; font-size: 14px; }
 main { padding: 14px 18px 40px; max-width: 1680px; margin: 0 auto; }
 footer { color: var(--faint); font-size: 12px; text-align: center; padding: 8px 16px 22px; }

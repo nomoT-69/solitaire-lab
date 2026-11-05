@@ -11,7 +11,9 @@ import {buildNextPhase, playPath} from './nextturn.js';
 import {copyReport} from './report.js';
 
 const EXTRA_NAME = {ev: '期待最終点', floor: '最低最終点'};
+const num1 = x => x === null || x === undefined ? '—' : (Math.round(x * 10) / 10).toLocaleString('ja-JP');
 const num3 = x => x === null || x === undefined ? '—' : (Math.round(x * 1000) / 1000).toLocaleString('ja-JP');
+const secText = ms => ms < 1000 ? '1秒未満' : ms < 10000 ? (ms / 1000).toFixed(1) + '秒' : Math.round(ms / 1000) + '秒';
 const pct = x => (Math.round(x * 10000) / 100) + '%';
 const drawnText = d => d.length ? 'ドロー札：' + d.map(x => x.name).join('・') : '（ドロー札なし）';
 let detailsOpen = false, making = false, makeErr = null, timer = null;
@@ -83,7 +85,7 @@ function nextView(R, interim) {
   const b = R.best;
   return h('div.nextv', {},
     h('div.nmain', {}, R.nextIcon ? pic(R.nextIcon.kind, R.nextIcon.id, R.next, 64) : null, h('div.ntext', R.next || '—')),
-    b && h('div.kpis', {}, kpi('達成率', b.pText, '', '目標点に届く確率'), kpi('ドリンク', num3(b.dNum), '本', 'このあと使うドリンクの本数の見込み（引く札によって変わる数の平均）'), kpi('手数', num3(b.aNum), '回', 'このあと札やドリンクを使う回数の見込み（平均）')));
+    b && h('div.kpis', {}, kpi('達成率', b.pText, '', '目標点に届く確率'), kpi('ドリンク', num1(b.dNum), '本', 'このあと使うドリンクの本数の見込み（引く札によって変わる数の平均）'), kpi('手数', num1(b.aNum), '回', 'このあと札やドリンクを使う回数の見込み（平均）')));
 }
 const kpi = (label, v, unit = '', tip = '') => h('div.kpi', {}, h('div.kl', label, tip && qtip(tip)), h('div.kv', v, h('small', unit)));
 
@@ -96,7 +98,7 @@ function resultView(R, rerender, {checkList} = {}) {
   const box = h('section.panel.ans', {});
   const add = (...xs) => box.append(...xs.filter(x => x));   // false・null は出さない
   add(h('div.ansHead', {}, h('span.status', {class: stCls, title: stDesc}, stName + (R.canceled ? '（中止）' : '')),
-    h('span.hint', `${R.criterion === 'max' ? '達成率最大の答え' : `${R.criterion}%で良ければの答え`}・${(R.ms / 1000).toFixed(1)}秒`)));
+    h('span.hint', {title: R.criterion === 'max' ? '達成率最大の答え' : `${R.criterion}%で良ければの答え`}, secText(R.ms) + 'で計算')));
   for (const n of R.notes || []) add(h('p.warnline', n));   // 計算の部品の注意書き
   const tags = [R.followed && ['前の答えから即答', '前の局面の答えから読み出しました（計算し直していません。答えは計算し直したときと同じです）'],
     R.retargeted && ['前の計算を使用', '同じ局面の前の計算を使って、目標・基準を変えた答えを出しました（答えは計算し直したときと同じです）'],
@@ -119,13 +121,13 @@ function resultView(R, rerender, {checkList} = {}) {
         R.setup && deck()?.id === R.deckId && h('button.big.pri.wide', {disabled: making, onclick: () => makePhase(R, steps, rerender, false)}, making ? '作っています…' : '次のターンの局面を作る →'),
         makeErr && h('p.warnline', '作れませんでした：' + makeErr));
     } else if (waiting) {
-      add(h('div.lbl', '何を引きましたか？'),
+      if (node.edges.length > 6 && node.edges.some(e => e.drawn.length >= 2)) add(...drawPicker(node, push, steps.length, rerender));
+      else add(h('div.lbl', '何を引きましたか？'),
         h('p.hint', '使った後の手札（色の枠＝ドロー札）'),
         h('div.draws', node.edges.map((e, i) => h('button.drawbtn', {onclick: () => push({type: 'draw', i, label: drawnText(e.drawn)})},
           h('div.dpics', (e.hand || e.drawn).slice(0, 6).map(x => h('span.hcard', {class: x.isNew !== false ? 'new' : 'old'}, pic('cards', x.id, x.name, 34)))),
           h('b', drawnText(e.drawn)),
-          e.hand && h('span.handtxt', '手札：' + e.hand.map(x => x.name).join('・')),
-          h('small', pct(e.p))))));
+          e.hand && h('span.handtxt', '手札：' + e.hand.map(x => x.name).join('・'))))));
     } else {
       if (steps.length) add(h('div.lbl', '次の手'), h('div.nmain', {}, node.icon ? pic(node.icon.kind, node.icon.id, node.act, 64) : null, h('div.ntext', node.act)),
         h('div.kpis', {}, kpi('この先の達成率', pct(node.p))));
@@ -170,6 +172,25 @@ function resultView(R, rerender, {checkList} = {}) {
   return box;
 }
 
+// 引いた札を選ぶところでは、ドローの確率は出さない（引いた後なので判断に使わず、達成率の % とまぎれる。1.9.0、利用者の決定）
+// 2枚以上引く局面：引いた札を1枚ずつ選ぶ（順は関係ない）。選んだ札を全部含む枝だけ残し、1つに決まったら進む（レビュー項目1）
+let pick = {key: null, ids: []};
+function drawPicker(node, push, key, rerender) {
+  if (pick.key !== key) pick = {key, ids: []};
+  const rest = e => { const r = e.drawn.map(x => x.id); for (const id of pick.ids) { const i = r.indexOf(id); if (i < 0) return null; r.splice(i, 1); } return r; };
+  const cand = node.edges.map((e, i) => ({e, i, rest: rest(e)})).filter(c => c.rest);
+  const go = c => push({type: 'draw', i: c.i, label: drawnText(c.e.drawn)});
+  const names = new Map(node.edges.flatMap(e => e.drawn.map(x => [x.id, x.name])));
+  const ids = [...new Set(cand.flatMap(c => c.rest))];
+  const choose = id => { pick.ids.push(id); const left = node.edges.filter(e => rest(e)); if (left.length === 1) go({e: left[0], i: node.edges.indexOf(left[0])}); else rerender(); };
+  const exact = cand.filter(c => !c.rest.length);
+  return [h('div.lbl', '何を引きましたか？'),
+    h('p.hint', pick.ids.length ? `${pick.ids.length + 1}枚目は？（順は関係ありません）` : '引いた札を1枚ずつ選んでください（順は関係ありません）'),
+    pick.ids.length ? h('div.row.picked', {}, h('span', '選んだ札：' + pick.ids.map(id => names.get(id)).join('・')), h('button.mini', {onclick: () => { pick.ids.pop(); rerender(); }}, '1つ戻す')) : null,
+    h('div.draws.chips', ids.map(id => h('button.drawbtn', {onclick: () => choose(id)}, pic('cards', id, names.get(id), 40), h('b', names.get(id))))),
+    ...exact.map(c => h('button.wide', {onclick: () => go(c)}, c.e.drawn.length ? `これで全部（${drawnText(c.e.drawn)}）` : 'ドロー札なし'))];
+}
+
 // もう一方の答えの1行。押すと主の答えと入れ替える（局面・予算などの共通の項目は残す）
 const ALT_LABEL = R => R.criterion === 'max' ? '達成率最大なら' : `${R.criterion}%で良ければ`;
 function altView(R, rerender) {
@@ -182,7 +203,7 @@ function altView(R, rerender) {
     S.play = {steps: []}; save(); rerender();
   };
   return h('div.altans', {},
-    h('div.altline', {}, h('b', ALT_LABEL(A) + '：'), b ? `達成率 ${b.pText}・ドリンク ${num3(b.dNum)}本・手数 ${num3(b.aNum)}回` : '—', A.next && h('span.altnext', '・次の手 ' + A.next)),
+    h('div.altline', {}, h('b', ALT_LABEL(A) + '：'), b ? `達成率 ${b.pText}・ドリンク ${num1(b.dNum)}本・手数 ${num1(b.aNum)}回` : '—', A.next && h('span.altnext', '・次の手 ' + A.next)),
     A.meetsAlpha === false && A.criterion !== 'max' && h('p.hint', `まだ ${A.criterion}% に届いていません（時間内に見つかった中で一番よい手順）。`),
     h('button', {onclick: swap}, 'こちらでプレイする'));
 }

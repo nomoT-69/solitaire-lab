@@ -22,9 +22,9 @@
   .txt { flex: 0 0 420px; font-size: 18px; }
   .txt.wide { flex: 1; }
   .txt ol, .txt ul { margin: 0; padding-left: 1.3em; } .txt li { margin: 6px 0; }
-  .txt b { color: var(--acc); }
+  .txt b { color: var(--acc); } .txt > :last-child, .txt li:last-child { margin-bottom: 0; }
   .pic { flex: 1; min-width: 0; display: flex; align-items: flex-start; justify-content: center; }
-  .pic img { max-width: 100%; max-height: 560px; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.08); object-fit: contain; }
+  .pic img { max-width: 100%; max-height: 550px; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.08); object-fit: contain; }
   .col { flex-direction: column; } .col .pic img { max-height: 470px; }
   .pic.three { gap: 14px; align-items: flex-start; } .pic.three figure { margin: 0; flex: 1; text-align: center; } .pic.three img { max-height: 330px; max-width: 100%; } .pic.three figcaption { font-weight: 700; color: var(--acc); margin-top: 4px; }
   .tip { background: var(--acc2); border-radius: 8px; padding: 8px 12px; margin-top: 12px; font-size: 15px; }
@@ -52,7 +52,7 @@
 <section class="slide cover">
   <h1>Solitaire Lab</h1>
   <div class="sub">学園アイドルマスターの「ソリティア」で、<br>どの順番で札を使えば目標点に届きやすいかを教えてくれるツールです。</div>
-  <div class="ver">概要（6ページ） ・ 版 1.8.3 ・ くわしい使い方は「詳細マニュアル」をご覧ください</div>
+  <div class="ver">概要 ・ 版 1.9.0 ・ くわしい使い方は「詳細マニュアル」をご覧ください</div>
 </section>
 
 <section class="slide">
@@ -87,13 +87,13 @@
   <h2><span class="no">3</span>便利な機能</h2>
   <div class="body"><div class="txt">
     <ul>
-      <li><b>全手順の一覧表</b>：引いた札の出方ごとに、最初から終わりまでの手順を切り替えて見られます。見たい列だけを出せます。Excel などで開けるファイルにも保存できます。</li>
+      <li><b>全手順の一覧表</b>：引いた札の出方ごとの手順を、最初から終わりまで見られます。見たい列を選べて、Excel で開けるファイルにも保存できます。</li>
       <li><b>夏夜の火力</b>：夏夜に咲く思い出の効果で入った点を表示します。</li>
       <li><b>途中から計算</b>：全身全霊などで札を引いたあとから計算し直すと、計算が速くなります。</li>
       <li><b>計算の続き</b>：時間内に終わらなかった計算を、続きから再開できます。</li>
       <li><b>次のターンへ</b>：ターンの終わりの状態から、次のターンの入力を作れます。</li>
       <li><b>取れる点を調べる</b>：目標点に迷ったら、確率100%・50%で届く最大の点と最大の点を調べられます。押すと目標点に入ります。</li>
-      <li><b>入力の手助け</b>：欄の横の「?」に説明。P アイテム・HIF・全力値の欄は、デッキに合わせて必要なときだけ出ます。</li>
+      <li><b>入力の手助け</b>：欄の横の「?」に説明。P アイテム・HIF・全力値の欄は、要るときだけ出ます。</li>
     </ul>
   </div><div class="pic"><img src="img/13-steps.webp" alt="手順の一覧表"></div></div>
 </section>

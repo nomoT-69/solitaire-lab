@@ -53,7 +53,7 @@ const BASE_COLS = [['step', '手順'], ['act', '手'], ['drawn', 'ドロー札']
 
 // 列の既定（チェックの初期値）。手順・手はいつも出す
 const ALWAYS = ['step', 'act'];
-const DEFAULT_COLS = ['drawn', 'path', 'score', 'heat', 'future'];
+const DEFAULT_COLS = ['drawn', 'score', 'heat', 'future'];   // ドローの確率の列（このドローの確率・ここまでの確率）は、列の選択で出す
 const NUM_COLS = ['score', 'heat', 'extra', 'factor', 'bonus', 'uses', 'drinks', 'p', 'path', 'future'];
 
 // 木 → 手順（最初から終わりまでの1本）の一覧。起きやすい順
@@ -109,7 +109,7 @@ export function renderSteps(root, rerender) {
     const ps = paths(R.tree);
     const i = Math.max(0, Math.min(ps.length - 1, S.ui.stepPath || 0)), P = ps[i];
     const go = j => { S.ui.stepPath = Math.max(0, Math.min(ps.length - 1, j)); save(); rerender(); };
-    const label = (x, j) => `手順${j + 1}（${pct(x.p)}・${x.reached ? '届く' : '届かない'}）`;
+    const label = (x, j) => `手順${j + 1}（確率 ${pct(x.p)}・${x.reached ? '届く' : '届かない'}）`;
     view = h('div', {},
       h('div.pathnav', {},
         h('button', {disabled: i === 0, onclick: () => go(i - 1)}, '◀ 前'),
