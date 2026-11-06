@@ -72,6 +72,26 @@ function paths(tree) {
   return out.map((x, i) => ({...x, order: i})).sort((a, b) => b.p - a.p || a.order - b.order);
 }
 
+// 今のプレイの手順（「使った →」と引いた札でたどった道筋）。その先は起きやすい引きを選んだ続き（future）で最後まで（1.14.2、利用者の要望）
+function playRows(tree, steps) {
+  const rows = []; let id = tree.root, p = 1, step = 1, pending = false;
+  const move = (n, i, future) => { const e = n.edges[i]; p *= e.p; rows.push({type: 'move', key: id + '-' + i, depth: 0, step: step++, pathP: p, anc: [], n, e, i, c: tree.nodes[e.next], branching: n.edges.length > 1, first: true, future}); id = e.next; };
+  for (const s of steps) {
+    const n = tree.nodes[id]; if (!n || n.end) break;
+    if (s.type === 'act') { if (n.edges.length === 1) move(n, 0, false); else pending = true; }
+    else if (pending) { move(n, s.i, false); pending = false; }
+  }
+  const played = rows.length;
+  for (let k = 0; k < 200; k++) {
+    const n = tree.nodes[id]; if (!n || n.end) break;
+    let best = 0; n.edges.forEach((e, i) => { if (e.p > n.edges[best].p) best = i; });
+    move(n, best, true);
+  }
+  const last = tree.nodes[id];
+  if (last?.end) rows.push({type: 'end', depth: 0, step, pathP: p, anc: [], n: last, future: rows.length > played});
+  return {rows, played, end: last};
+}
+
 export function renderSteps(root, rerender) {
   const R = S.result;
   if (!R?.tree) return;
@@ -107,7 +127,15 @@ export function renderSteps(root, rerender) {
   const table = list => h('div.stepwrap', {}, h('table.tbl.steptbl', {}, h('thead', h('tr', COLS.map(([, t]) => h('th', t)))), h('tbody', list)));
 
   let view;
-  if (mode === 'path') {
+  const playing = S.play?.steps?.length > 0;
+  if (mode === 'path' && playing && S.ui.stepPlay !== false) {
+    const {rows: pr, played, end} = playRows(R.tree, S.play.steps);
+    view = h('div', {},
+      h('div.pathnav', {}, h('button.on', {}, '今のプレイの手順'), h('button', {onclick: () => { S.ui.stepPlay = false; save(); rerender(); }}, '手順の一覧から選ぶ'),
+        h('span.hint', `ここまで ${played} 手（色の薄い行は、この先に起きやすい引きを選んだ場合）`)),
+      h('p.pathsum', {class: end?.reached ? 'ok' : 'ng'}, end ? (end.cut ? 'この先は省略（ほかの引き）' : `この続きの終わりのスコア ${fmt(end.st?.score ?? end.score)}・${end.reached ? '目標に届く' : '目標に届かない'}`) : ''),
+      table(pr.map(r => { const t = tr(r); if (r.future) t.classList.add('future'); return t; })));
+  } else if (mode === 'path') {
     const ps = paths(R.tree);
     const i = Math.max(0, Math.min(ps.length - 1, S.ui.stepPath || 0)), P = ps[i];
     const go = j => { S.ui.stepPath = Math.max(0, Math.min(ps.length - 1, j)); save(); rerender(); };
@@ -117,6 +145,7 @@ export function renderSteps(root, rerender) {
         h('button', {disabled: i === 0, onclick: () => go(i - 1)}, '◀ 前'),
         h('select', {onchange: e => go(Number(e.target.value))}, ps.slice(0, 1000).map((x, j) => h('option', {value: j, selected: j === i}, label(x, j)))),
         h('button', {disabled: i >= ps.length - 1, onclick: () => go(i + 1)}, '次 ▶'),
+        playing && h('button', {onclick: () => { S.ui.stepPlay = true; save(); rerender(); }}, '今のプレイの手順'),
         h('span.hint', R.tree.cut ? `起きやすい順に上位 ${ps.length} 通り（手順が多いので、ほかの引きは省略）` : `全 ${ps.length} 通り（起きやすい順）`)),
       h('div.pathchips', {}, ps.slice(0, 12).map((x, j) => h('button.mini', {class: [j === i && 'on', x.reached ? 'ok' : 'ng'].filter(Boolean).join(' '), onclick: () => go(j)}, `${j + 1}`)),
         ps.length > 12 && h('span.hint', '…ほかは上の一覧から')),
