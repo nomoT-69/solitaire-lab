@@ -186,6 +186,18 @@ self.onmessage = e => {
     const model = T.tecnaiModel(data, m.setup, m.target);
     const o = m.opts;
     const base = {order: o.order.split(''), extras: o.extras, maxMs: o.maxMs, maxStates: o.maxStates, maxHeapMiB: MAX_HEAP_MIB, maxEstMiB: 'maxEstMiB' in o ? o.maxEstMiB : MAX_EST_MIB, caps: o.caps || CAPS};   // caps・maxEstMiB は試験用に opts で上書きできる（画面からは渡さない）
+    // 点数を伸ばす（試作・未検証、1.12.0）：届く確率 → 届いた先も含めた期待最終点。続きから・即答・95% はない（計算の部品 1eafcc5）
+    if (o.beyondGoal) {
+      dropJob(); F = null;
+      post('progress', {stage: '計算中（点数を伸ばす）', ms: Date.now() - t0});
+      const onUpdate = u => { try { post('update', {result: summarize1(model, u, o, Date.now() - t0, false)}); } catch {} };
+      const r = A.solveAegis(model, {beyondGoal: true, maxMs: o.maxMs, maxEstMiB: base.maxEstMiB, maxHeapMiB: MAX_HEAP_MIB, onUpdate});
+      const out = summarize1(model, r, o, Date.now() - t0, true);
+      out.canFollow = false; out.resumable = false;
+      post('result', {result: out});
+      post('table', {rows: null, note: '点数を伸ばす計算では、比較表は作りません'});
+      return;
+    }
     let fr = null;
     try { fr = tryFollow(m, model, o); } catch { fr = null; }
     if (fr) {
@@ -243,7 +255,7 @@ function keepForFollow(job, r, key, model, dk) {
 // 打ち切りの理由（エンジンの trials の reason）
 const REASON = {MEMORY_LIMIT: 'メモリの上限', GROWTH_LIMIT: 'メモリに入りきらない見込み', TIME_LIMIT: '時間切れ', STATE_LIMIT: '状態数の上限'};
 
-const fmtBest = b => b && ({p: b.p, d: b.d, a: b.a, pNum: b.pNum, dNum: b.dNum, aNum: b.aNum, pText: pct(b.pNum), ev: b.ev ?? null, floor: b.floor ?? null});
+const fmtBest = b => b && ({p: b.p, d: b.d, a: b.a, pNum: b.pNum, dNum: b.dNum, aNum: b.aNum, pText: pct(b.pNum), ev: b.ev ?? null, floor: b.floor ?? null, evNum: b.evNum ?? null, floorNum: b.floorNum ?? null, evIfReachedNum: b.evIfReachedNum ?? null});
 
 // 手の名前
 function actLabel(model, a) {
@@ -363,7 +375,7 @@ function summarize1(model, r, o, ms, final) {
     meetsAlpha: typeof r.meetsAlpha === 'boolean' ? r.meetsAlpha : null,
     notes: (model.engine?.notes || []).slice(),   // 計算の部品の注意書き（累計の全力値を仮に 7 で計算した、など）
     maxScore: r.maxScore && typeof r.maxScore.value === 'number' ? {value: r.maxScore.value, reached: !!r.maxScore.reached, exact: !!r.maxScore.exact, atLeast: !!r.maxScore.atLeast, note: r.maxScore.note || ''} : null,   // この局面から取りうる最大の最終点   // 達成率を指定したとき（95% など）、その達成率を満たすか
-    stats: {nodes: r.stats?.nodes ?? null, heapMiB: r.stats?.heapUsedMiB ?? null}, criterion: o.criterion, order: o.order, extras: o.extras,
+    stats: {nodes: r.stats?.nodes ?? null, heapMiB: r.stats?.heapUsedMiB ?? null}, criterion: o.criterion, order: o.order, extras: o.extras, objective: r.objective || (o.beyondGoal ? 'beyondGoal' : null),
     trials: (r.trials || []).map(t => `${t.solver}：${({complete: '終了', incomplete: '打ち切り', provisional: '暫定'})[t.status] || t.status}${t.status === 'incomplete' && t.reason ? '・' + (REASON[t.reason] || t.reason) : ''}${t.ms !== undefined ? '（' + (t.ms / 1000).toFixed(1) + '秒）' : ''}`)};
   if (!r.best || typeof r.extract !== 'function') return out;
   const pol = r.extract();

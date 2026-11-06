@@ -51,7 +51,7 @@
 <section class="slide cover">
   <h1>Solitaire Lab 詳細マニュアル</h1>
   <div class="sub">学園アイドルマスターの「ソリティア」で、<br>どの順番で札を使えば目標点に届きやすいかを教えてくれるツールです。</div>
-  <div class="ver">版 1.11.0 ・ ← → キー、または画面の左右を押してページをめくります</div>
+  <div class="ver">版 1.12.0 ・ ← → キー、または画面の左右を押してページをめくります</div>
 </section>
 
 <section class="slide">
@@ -67,16 +67,17 @@
     <li><a href="#10">その他の条件を入力する</a></li>
     <li><a href="#11">詳しい条件を入力する</a></li>
     <li><a href="#12">ドリンクを温存する（HIF の1回目の試験）</a></li>
-    <li><a href="#13">計算する</a></li>
-    <li><a href="#14">結果を見る</a></li>
-    <li><a href="#15">結果をくわしく見る</a></li>
-    <li><a href="#16">ゲームを進めながら使う</a></li>
-    <li><a href="#17">手順の一覧表を見る</a></li>
-    <li><a href="#18">途中から・次のターンから計算する</a></li>
-    <li><a href="#19">計算が終わらないとき</a></li>
-    <li><a href="#20">設定を変える</a></li>
-    <li><a href="#21">札の効果を追加・修正する</a></li>
-    <li><a href="#22">困ったときは</a></li>
+    <li><a href="#13">点数を伸ばす（試作・未検証）</a></li>
+    <li><a href="#14">計算する</a></li>
+    <li><a href="#15">結果を見る</a></li>
+    <li><a href="#16">結果をくわしく見る</a></li>
+    <li><a href="#17">ゲームを進めながら使う</a></li>
+    <li><a href="#18">手順の一覧表を見る</a></li>
+    <li><a href="#19">途中から・次のターンから計算する</a></li>
+    <li><a href="#20">計算が終わらないとき</a></li>
+    <li><a href="#21">設定を変える</a></li>
+    <li><a href="#22">札の効果を追加・修正する</a></li>
+    <li><a href="#23">困ったときは</a></li>
   </ol>
 </section>
 
@@ -201,7 +202,19 @@
 </section>
 
 <section class="slide">
-  <h2><span class="no">11</span>計算する</h2>
+  <h2><span class="no">11</span>点数を伸ばす（試作・未検証）</h2>
+  <div class="body"><div class="txt">
+    <ul>
+      <li>ふだんの計算は、目標点に届けば、その先の点は追いません。</li>
+      <li>目標点に届いた後も点を伸ばしたいときは、目標点の下の「<b>点数を伸ばす</b>」にチェックを入れます。届く確率を一番に、同じなら<b>期待最終点</b>（届いた先も含めた最終点の平均）が高い手を選びます。</li>
+      <li>答えには、達成率・<b>届いたときの平均点</b>（目標点に届いた場合の最終点の平均）・<b>最低最終点</b>（一番悪い引きのときの最終点）が出ます。ドリンク・手数は表示だけで、比べません。</li>
+      <li>「ドリンクを温存する」とは同時に使えません。続きからの計算・途中からの即答・95%の答え・比較表はありません。</li>
+    </ul>
+  </div><div class="pic"><img src="img/18-beyond.webp" alt="点数を伸ばす"></div></div>
+</section>
+
+<section class="slide">
+  <h2><span class="no">12</span>計算する</h2>
   <div class="body"><div class="txt">
     <ol>
       <li>右側の一番上で、入力に問題がないか（✔ / ✖）を確認します。</li>
@@ -214,7 +227,7 @@
 </section>
 
 <section class="slide">
-  <h2><span class="no">12</span>結果を見る</h2>
+  <h2><span class="no">13</span>結果を見る</h2>
   <div class="body"><div class="txt">
     <ul>
       <li><b>次の手</b>：次に使う札（または飲むドリンク）です。</li>
@@ -228,7 +241,7 @@
 </section>
 
 <section class="slide">
-  <h2><span class="no">13</span>結果をくわしく見る</h2>
+  <h2><span class="no">14</span>結果をくわしく見る</h2>
   <div class="body"><div class="txt">
     <p>「▸ 詳しく」を押すと、次の内容が表示されます。</p>
     <ul>
@@ -240,7 +253,7 @@
 </section>
 
 <section class="slide">
-  <h2><span class="no">14</span>ゲームを進めながら使う</h2>
+  <h2><span class="no">15</span>ゲームを進めながら使う</h2>
   <div class="body"><div class="txt">
     <ol>
       <li>ゲームで、表示された札を使います。</li>
@@ -253,7 +266,7 @@
 </section>
 
 <section class="slide">
-  <h2><span class="no">15</span>手順の一覧表を見る</h2>
+  <h2><span class="no">16</span>手順の一覧表を見る</h2>
   <div class="body col"><div class="txt wide">
     「全手順（詳細）を見る」を押すと、手順の一覧表が表示されます。<br>
     「手順ごと」では、引いた札の出方ごとに、最初から終わりまでの手順を1つずつ見られます（起きやすい順に「手順1」「手順2」…）。「◀ 前」「次 ▶」や一覧で切り替えます。「全部の表」では、すべての分かれを1つの表で見られます。<br>
@@ -262,7 +275,7 @@
 </section>
 
 <section class="slide">
-  <h2><span class="no">16</span>途中から・次のターンから計算する</h2>
+  <h2><span class="no">17</span>途中から・次のターンから計算する</h2>
   <div class="body"><div class="txt">
     <ul>
       <li><b>ここから局面を作る</b>：ゲームの途中の状態を、そのまま入力に取り込みます。全身全霊などで札を引いたあとに計算し直すと、計算が速くなります。目標点は、それまでに取った点数を引いた値になります。最適な答えが出ていれば、作った局面を直さずに「計算する」を押すと、前の答えからすぐに答えが出ます。</li>
@@ -273,7 +286,7 @@
 </section>
 
 <section class="slide">
-  <h2><span class="no">17</span>計算が終わらないとき</h2>
+  <h2><span class="no">18</span>計算が終わらないとき</h2>
   <div class="body"><div class="txt wide">
     <ul>
       <li>時間内にすべての手順を調べきれなかったときは、左上に「<b>今のところの最善</b>」と表示されます。これは「時間内に見つかった中で一番よい手順」という意味です。</li>
@@ -285,7 +298,7 @@
 </section>
 
 <section class="slide">
-  <h2><span class="no">18</span>設定を変える</h2>
+  <h2><span class="no">19</span>設定を変える</h2>
   <div class="body"><div class="txt">
     <ul>
       <li><b>答えの選び方</b>：はじめは「達成率をできるだけ高くする」です。</li>
@@ -298,7 +311,7 @@
 </section>
 
 <section class="slide">
-  <h2><span class="no">19</span>札の効果を追加・修正する</h2>
+  <h2><span class="no">20</span>札の効果を追加・修正する</h2>
   <div class="body"><div class="txt">
     <p>右上の「設定 ▾」→「札の設定」で、次のことができます。</p>
     <ul>
@@ -313,7 +326,7 @@
 </section>
 
 <section class="slide">
-  <h2><span class="no">20</span>困ったときは</h2>
+  <h2><span class="no">21</span>困ったときは</h2>
   <div class="body"><div class="txt wide">
     <table>
       <tr><th>結果がおかしい</th><td>結果の下、または「設定」にある「<b>報告用の情報をコピー</b>」（右上の「ヘルプ」の中にもあります）を押し、ひとこと添えて作者に送ってください。入力した内容と結果がコピーされます（個人情報は含まれません）。</td></tr>

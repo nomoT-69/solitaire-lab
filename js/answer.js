@@ -15,7 +15,7 @@ const num1 = x => x === null || x === undefined ? '—' : (Math.round(x * 10) / 
 const num3 = x => x === null || x === undefined ? '—' : (Math.round(x * 1000) / 1000).toLocaleString('ja-JP');
 const secText = ms => ms < 1000 ? '1秒未満' : ms < 10000 ? (ms / 1000).toFixed(1) + '秒' : Math.round(ms / 1000) + '秒';
 // 見出しの比べる順：温存しない（d なし）は「届く確率 → 手数」。温存するときは、達成率最大なら届く確率を先に、95% なら「95%以上で」
-const headOrder = R => !R.order ? '' : !R.order.includes('d') ? ordWords(R.order) + '・'
+const headOrder = R => R.objective === 'beyondGoal' ? '点数を伸ばす（届く確率 → 期待最終点・試作）・' : !R.order ? '' : !R.order.includes('d') ? ordWords(R.order) + '・'
   : 'ドリンクを温存（' + (R.criterion === 'max' ? '届く確率 → ' : `達成率 ${R.criterion}% 以上で `) + ordWords(R.order.replace('p', '')) + '）・';
 const ordWords = o => o.split('').map(c => ({d: 'ドリンク', p: '届く確率', a: '手数'})[c]).join(' → ');
 const pct = x => (Math.round(x * 10000) / 100) + '%';
@@ -89,7 +89,9 @@ function nextView(R, interim) {
   const b = R.best;
   return h('div.nextv', {},
     h('div.nmain', {}, R.nextIcon ? pic(R.nextIcon.kind, R.nextIcon.id, R.next, 64) : null, h('div.ntext', R.next || '—')),
-    b && h('div.kpis', {}, kpi('達成率', b.pText, '', '目標点に届く確率'), kpi('ドリンク', num1(b.dNum), '本', 'このあと使うドリンクの本数の見込み（引く札によって変わる数の平均）'), kpi('手数', num1(b.aNum), '回', 'このあと札やドリンクを使う回数の見込み（平均）')));
+    b && R.objective === 'beyondGoal' && h('div.kpis', {}, kpi('達成率', b.pText, '', '目標点に届く確率'), kpi('届いたときの平均点', b.evIfReachedNum == null ? (b.pNum === 0 ? '届かない' : '—') : fmt(Math.round(b.evIfReachedNum)), b.evIfReachedNum == null ? '' : '点', '目標点に届いた場合の、最終点の平均（届かない場合は含めない）。手は、届かない場合も含めた平均で選んでいます'), kpi('最低最終点', b.floorNum == null ? '—' : fmt(Math.round(b.floorNum)), '点', '一番悪い引きのときの最終点')),
+    b && R.objective === 'beyondGoal' && h('p.hint', (b.evIfReachedNum == null && b.pNum === 0 && b.evNum != null ? `届かない場合の平均 ${fmt(Math.round(b.evNum))}点（参考）・` : '') + `ドリンク ${num1(b.dNum)}本・手数 ${num1(b.aNum)}回（比べていません）`),
+    b && R.objective !== 'beyondGoal' && h('div.kpis', {}, kpi('達成率', b.pText, '', '目標点に届く確率'), kpi('ドリンク', num1(b.dNum), '本', 'このあと使うドリンクの本数の見込み（引く札によって変わる数の平均）'), kpi('手数', num1(b.aNum), '回', 'このあと札やドリンクを使う回数の見込み（平均）')));
 }
 const kpi = (label, v, unit = '', tip = '') => h('div.kpi', {}, h('div.kl', label, tip && qtip(tip)), h('div.kv', v, h('small', unit)));
 

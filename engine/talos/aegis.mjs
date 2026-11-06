@@ -10,6 +10,7 @@
 import {DEFAULT_ORDER,solveTomahawk,solveTomahawkAuto,tecnaiModel} from './tomahawk.mjs';
 import {heatCapScore} from './estimate.mjs';
 import {solveJavelin,javelinSupports,betterBest} from './javelin.mjs';
+import {solveBeyondGoal} from './beyond-goal.mjs';
 export {tecnaiModel};
 const summarizeV=v=>{const o={};for(const k of ['p','d','a']){o[k]=str(v[k]);o[k+'Num']=toNum(v[k]);}if(v.ev!==undefined){o.ev=str(v.ev);o.evNum=toNum(v.ev);}if(v.fl!==undefined){o.floor=str(v.fl);o.floorNum=toNum(v.fl);}return o;};
 // 暫定の答えを軽くする（opts.compact、既定 true。2026-11-04）：方策の DAG を取り出して持ち、ソルバのグラフ・曲線を手放す。
@@ -63,6 +64,9 @@ const heatAsMax=(opts,st,crit)=>st.heat&&!crit&&opts.alphaHeatMax===true;
 // opts.beamMaxMemo（既定 10万）：上位1〜3手の探索で覚える局面の数の上限。1局面 4〜22KB なので、ブラウザ（メモリを測れない）でも約0.4〜2GB で止まる（上位1手は1〜3万局面で終わる）
 const capLabel=st=>st.cap+(st.heat?'・熱意の見込み':'');
 export function solveAegis(model,opts={}){
+  // 最後の試験の「点数を伸ばす」（opts.beyondGoal、G2 2026-11-06、利用者の決定。GUI のチェック。既定は「目標点まででよい」＝今の計算）：
+  // 届く確率 P を最大に、同じなら届いた先も含めた期待最終点を最大に（talos/beyond-goal.mjs）。order・criterion・alpha・alsoMax は使わない
+  if(opts.beyondGoal)return solveBeyondGoal(model,opts);
   // 部分改善の値（最終点の ev・floor）を、ソルバの内部の形（これから得る得点）に直す
   const toRaw=v=>{const r={p:v.p,d:v.d,a:v.a};const s0=R(model.root.score);if(v.ev!==undefined)r.ev=sub(v.ev,s0);if(v.fl!==undefined)r.fl=sub(v.fl,s0);return r;};
   const started=Date.now();const {maxMs=600000,maxStates=2e7,quickMs=2000,caps=[20000,100000,300000],onUpdate=null}=opts;
@@ -126,6 +130,8 @@ export function solveAegis(model,opts={}){
 // 状態数（maxStates、累計）やメモリ（opts.maxHeapMiB）の上限を超えたら、厳密な計算の続きは捨てる（メモリを返す）。
 // 続けても良くならないときは resumable:false と、その理由（resumeReason）を返す。
 export function createAegisJob(model,opts={}){
+  // 点数を伸ばす（opts.beyondGoal）：続きからの計算はしない（run のたびに予算内で解く）
+  if(opts.beyondGoal)return {run:(o={})=>solveBeyondGoal(model,{...opts,...o}),follow:()=>null,retarget:()=>null,dispose(){},get state(){return {calls:0,final:false,canFollow:false};}};
   const crit=opts.criterion==='max';const canJavelin=!opts.noJavelin&&javelinSupports(opts).ok;
   const caps=capStages(opts,opts.caps??[20000,100000,300000]),steps=opts.horizonSteps??[opts.maxOps??24,48,96];
   const bm=opts.noJavelin?null:beamOpts(opts);const J={trials:[],prov:null,final:null,calls:0,totalMs:0,quickDone:!canJavelin,beamIdx:bm?0:Infinity,
