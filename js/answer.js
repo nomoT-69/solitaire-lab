@@ -48,6 +48,20 @@ function mergeSub(tree, at, sub) {
   tree.nodes[at] = tree.nodes[off + sub.root];
 }
 let expanding = null;
+// その手で入るスコアと、熱意などの変わり方（ゲームの画面と照らし合わせるため。1.14.1、利用者の要望）。
+// 引く札で変わらないことが多いが、変わるときは幅で出す。手の前の値＝node.st、後の値＝分かれの先の st
+function gainOf(tree, node) {
+  const a = node.st; if (!a || !node.edges?.length) return null;
+  const kids = node.edges.map(e => tree.nodes[e.next]?.st).filter(Boolean); if (!kids.length) return null;
+  const ds = kids.map(b => b.score - a.score), lo = Math.min(...ds), hi = Math.max(...ds);
+  const sc = lo === hi ? `+${fmt(lo)}` : `+${fmt(lo)}〜+${fmt(hi)}`;
+  const tot = kids.map(b => b.score), tlo = Math.min(...tot), thi = Math.max(...tot);
+  const parts = [];
+  const same = f => kids.every(b => f(b) === f(kids[0]));
+  if (same(b => b.heat) && kids[0].heat !== a.heat) parts.push(`熱意 ${fmt(a.heat)} → ${fmt(kids[0].heat)}`);
+  if (same(b => b.extra) && kids[0].extra !== a.extra) parts.push(`熱意追加 ${fmt(a.extra)} → ${fmt(kids[0].extra)}`);
+  return {text: `使うとスコア ${sc}`, sub: `（このターンの合計 ${tlo === thi ? fmt(tlo) : fmt(tlo) + '〜' + fmt(thi)}${parts.length ? '・' + parts.join('・') : ''}）`, short: `${sc}点`};
+}
 
 export function renderAnswer(root, rerender) {
   clearInterval(timer);
@@ -157,13 +171,15 @@ function resultView(R, rerender, {checkList} = {}) {
       if (steps.length) add(h('div.lbl', '次の手'), h('div.nmain', {}, node.icon ? pic(node.icon.kind, node.icon.id, node.act, 64) : null, h('div.ntext', node.act)),
         h('div.kpis', {}, kpi('この先の達成率', pct(node.p))));
       if (node.sameEval > 1) add(h('p.hint', `この局面では、同じ評価の手が ${node.sameEval} 通りあります。`));
-      add(h('button.big.pri.wide', {onclick: () => push({type: 'act', label: node.act})}, node.kind === 'endTurn' ? 'ターンを終えた →' : node.kind === 'drink' ? '飲んだ →' : '使った →'));
+      const g = gainOf(R.tree, node);
+      if (g) add(h('p.gainline', {}, h('b', g.text), g.sub && h('span', g.sub)));
+      add(h('button.big.pri.wide', {onclick: () => push({type: 'act', label: node.act, gain: g?.short || null})}, node.kind === 'endTurn' ? 'ターンを終えた →' : node.kind === 'drink' ? '飲んだ →' : '使った →'));
       // プレイの途中：ここまでの局面を、計算の入力にする（引いた札が決まったあとで計算し直すと速い）
       if (steps.length && R.setup && deck()?.id === R.deckId) add(h('button.wide.midbtn', {disabled: making, title: '今の手札・行動回数・熱意などのまま、局面の入力にします。目標点はここまでに入った点を引きます',
         onclick: () => makePhase(R, steps, rerender, true)}, making ? '作っています…' : 'ここから局面を作る（今の手札・行動回数のまま）'),
         makeErr && h('p.warnline', '作れませんでした：' + makeErr));
     }
-    if (steps.length) add(h('div.histline', {}, h('ol', steps.map(s => h('li', {class: s.type}, s.type === 'act' ? s.label.replace(/ を(使う|飲む)$/, '') : s.label))),
+    if (steps.length) add(h('div.histline', {}, h('ol', steps.map(s => h('li', {class: s.type}, s.type === 'act' ? s.label.replace(/ を(使う|飲む)$/, '') + (s.gain ? `（${s.gain}）` : '') : s.label))),
       h('div.row', {}, h('button.mini', {onclick: () => { steps.pop(); save(); rerender(); }}, '1つ戻す'), h('button.mini', {onclick: () => { S.play = {steps: []}; save(); rerender(); }}, '最初から'))));
   } else add(h('div.lbl', '次の手'), nextView(R, false), R.treeDropped && h('p.hint', '答えが大きいので、プレイの案内（使った → 引いた札）は保存していません。続けて案内を使うときは、計算し直してください。'));
 
