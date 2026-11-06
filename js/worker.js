@@ -161,6 +161,10 @@ self.onmessage = e => {
     return;
   }
   // 続きから計算：前の計算（job）を捨てずに、予算を足して続ける（エンジンの createAegisJob、AEGIS_SPEC.md 9.1）
+  if (m.type === 'expand') {
+    try { post('expanded', {at: m.at, tree: expandTree(m.key, m.path)}); } catch (err) { post('expanded', {at: m.at, error: String(err?.message || err)}); }
+    return;
+  }
   if (m.type === 'resume') {
     try {
       if (!J) throw Error('続きから計算できません（前の計算が残っていません）');
@@ -177,6 +181,7 @@ self.onmessage = e => {
     return;
   }
   if (m.type !== 'solve') return;
+  TREES = []; TREE_LIMIT = m.opts?.treeLimit ?? 20000; TOP_PATHS = m.opts?.topPaths ?? 100;
   try {
     if (shapeErrors.length) throw Error('エンジンの形が合いません（見つからない関数：' + shapeErrors.join('、') + '）。GUI の worker.js を直してください');
     const t0 = Date.now();
@@ -317,32 +322,44 @@ function stOf(E, s) {
   return {score: s.score, heat: d.enthusiasm, extra: d.extra, factor: d.factor, bonus: d.bonus, stance: d.stance, uses: d.uses, drinks: (d.drinks || []).length};
 }
 
-// 画面に送る木の大きさの上限（分かれの数）。これを超える答えは、浅い手順から入るだけ入れて、その先は「省略」の印にする
-// （VEIL の報告 2026-11-06：分かれ 57万の答えを送ると 360MB になり、ブラウザの画面が落ちた（エラーコード 5））
-const TREE_LIMIT = 20000;
-function playTree(model, pol) {
+// 画面に送る手順の木。分かれが TREE_LIMIT 以下なら全部。超えるときは、起きやすい順に TOP_PATHS 通りの手順を最後まで入れ、
+// それ以外の引きは「ほかの引き」の印（cut）だけにする（値＝届く確率・ドリンク・手数は計算して入れる）。印の先は、プレイ中に
+// 'expand' で取り寄せる（この worker が答え全体を持っている間だけ）。
+// （VEIL の報告 2026-11-06：分かれ 57万の答えを全部送ると 360MB になり、画面が落ちた。1.12.3 は深さで切っていたが、
+//  手順が途中で切れるので、1.13.2 から「手順の数」で切る。利用者の決定：100通り）
+let TREE_LIMIT = 20000, TOP_PATHS = 100;   // 試験のときだけ opts.treeLimit・opts.topPaths で変える（画面からは渡さない）
+let TREES = [];   // 印の先を取り寄せるための {model, pol}（solve のたびに空にする）
+function playTree(model, pol, s0 = model.root, id0 = pol.root, base = []) {
   const E = model.engine;
+  const key = TREES.length; TREES.push({model, pol});
   const nodes = [];
-  // 深さごとの数を数えて、上限に入る深さまでを全部入れる
-  let maxDepth = Infinity;
-  { let level = [pol.root], total = 0, d = 0;
-    while (level.length) { total += level.length; if (total > TREE_LIMIT) { maxDepth = d - 1; break; } level = level.flatMap(id => (pol.nodes[id].edges || []).map(e => e.next)); d++; } }
-  // 省略した先の値（届く確率・ドリンク・手数）だけを計算する（中身は送らない）
+  const actOf = (s, n) => { const a = model.choices(s).find(a => JSON.stringify(a.raw ?? a) === JSON.stringify(n.choice)); if (!a) throw Error('方策の木の手が、局面の合法手に見つかりません'); return a; };
+  // 入れる手順：全部入るなら全部。入らなければ、起きやすい順に TOP_PATHS 通り（確率の大きい順に広げる）
+  let keep = null;
+  if (!(base.length === 0 && pol.nodes.length <= TREE_LIMIT)) {
+    keep = new Set(['']);
+    const heap = [{p: 1, s: s0, id: id0, path: []}], up = i => { while (i) { const j = (i - 1) >> 1; if (heap[j].p >= heap[i].p) break; [heap[i], heap[j]] = [heap[j], heap[i]]; i = j; } };
+    const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l].p > heap[m].p) m = l; if (r < heap.length && heap[r].p > heap[m].p) m = r; if (m === i) break; [heap[i], heap[m]] = [heap[m], heap[i]]; i = m; } } return top; };
+    let found = 0, pops = 0;
+    while (heap.length && found < TOP_PATHS && pops++ < 300000) {
+      const x = pop(), n = pol.nodes[x.id];
+      if (n.choice === null) { found++; for (let k = 1; k <= x.path.length; k++) keep.add(x.path.slice(0, k).join(',')); continue; }
+      model.branches(x.s, actOf(x.s, n)).forEach((b, i) => { heap.push({p: x.p * b.pFloat, s: b.s, id: n.edges[i].next, path: [...x.path, i]}); up(heap.length - 1); });
+    }
+  }
+  // 印の先の値（届く確率・ドリンク・手数）だけを計算する（中身は送らない）
   function valueOf(s, id) {
     const n = pol.nodes[id];
     if (n.choice === null) return [s.score >= model.target ? 1 : 0, 0, 0];
-    const act = model.choices(s).find(a => JSON.stringify(a.raw ?? a) === JSON.stringify(n.choice));
-    if (!act) throw Error('方策の木の手が、局面の合法手に見つかりません');
     let p = 0, d = n.choice.type === 'drink' ? 1 : 0, a = n.choice.type === 'skip' ? 0 : 1;
-    model.branches(s, act).forEach((b, i) => { const [cp, cd, ca] = valueOf(b.s, n.edges[i].next); p += b.pFloat * cp; d += b.pFloat * cd; a += b.pFloat * ca; });
+    model.branches(s, actOf(s, n)).forEach((b, i) => { const [cp, cd, ca] = valueOf(b.s, n.edges[i].next); p += b.pFloat * cp; d += b.pFloat * cd; a += b.pFloat * ca; });
     return [p, d, a];
   }
-  function walk(s, id, depth = 0) {
+  function walk(s, id, path) {
     const n = pol.nodes[id];
-    if (n.choice !== null && depth > maxDepth) { const [p, d, a] = valueOf(s, id); nodes.push({end: true, cut: true, reached: false, score: s.score, p, d, a, st: stOf(E, s)}); return nodes.length - 1; }
+    if (keep && !keep.has(path.join(','))) { const [p, d, a] = valueOf(s, id); nodes.push({end: true, cut: true, key, path: [...base, ...path], reached: false, score: s.score, p, d, a, st: stOf(E, s)}); return nodes.length - 1; }
     if (n.choice === null) { nodes.push({end: true, reached: s.score >= model.target, score: s.score, p: s.score >= model.target ? 1 : 0, d: 0, a: 0, st: stOf(E, s)}); return nodes.length - 1; }
-    const act = model.choices(s).find(a => JSON.stringify(a.raw ?? a) === JSON.stringify(n.choice));
-    if (!act) throw Error('方策の木の手が、局面の合法手に見つかりません');
+    const act = actOf(s, n);
     const br = model.branches(s, act);
     if (br.length !== n.edges.length) throw Error('方策の木の分かれ方が合いません');
     const me = {act: actLabel(model, n.choice), icon: actIcon(n.choice), kind: n.choice.type, choice: n.choice, ck: choiceKey(E, n.choice), sameEval: n.sameEval ?? null, edges: [], st: stOf(E, s)};
@@ -350,7 +367,7 @@ function playTree(model, pol) {
     let p = 0, d = n.choice.type === 'drink' ? 1 : 0, a = n.choice.type === 'skip' ? 0 : 1;
     br.forEach((b, i) => {
       const {hand, drawn, exchanged} = drawnOf(E, model.data ?? cache.data, s, n.choice, b.s);
-      const next = walk(b.s, n.edges[i].next, depth + 1);
+      const next = walk(b.s, n.edges[i].next, [...path, i]);
       const c = nodes[next];
       p += b.pFloat * c.p; d += b.pFloat * c.d; a += b.pFloat * c.a;
       // 継続効果（夏夜など）：カウンタの動きと、その1手で出したスコア
@@ -361,8 +378,17 @@ function playTree(model, pol) {
     Object.assign(me, {p, d, a});
     return idx;
   }
-  const root = walk(model.root, pol.root);
-  return {root, nodes, cut: maxDepth !== Infinity};
+  const root = walk(s0, id0, []);
+  return {root, nodes, cut: !!keep, key};
+}
+// 印（cut）の先を取り寄せる：答えの根から path（分かれの番号の列）をたどった局面から、同じ作り方で木を作る
+function expandTree(key, path) {
+  const T = TREES[key];
+  if (!T) throw Error('答えの全体がもうありません（計算し直してください）');
+  const {model, pol} = T;
+  let s = model.root, id = pol.root;
+  for (const i of path) { const n = pol.nodes[id]; const act = model.choices(s).find(a => JSON.stringify(a.raw ?? a) === JSON.stringify(n.choice)); s = model.branches(s, act)[i].s; id = n.edges[i].next; }
+  return playTree(model, pol, s, id, path);
 }
 
 // 答えを画面の形にする。α の計算で達成率最大の答え（maxResult）もあれば、達成率最大を主に、α の答えを alt に入れて返す（同じ答えなら alt なし）

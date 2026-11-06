@@ -6,7 +6,7 @@ import {h, pic, fmt, toast, qtip} from './ui.js';
 import {RUN, startRun, cancelRun, betterThan, resumeRun, canResume, phaseSig} from './run.js';
 import {validate, entries, zoneOf} from './phase.js';
 import {STATUS, orderText, critText} from './result.js';
-import {turnEnd} from './solver.js';
+import {turnEnd, canExpand, expandSolve} from './solver.js';
 import {buildNextPhase, playPath} from './nextturn.js';
 import {copyReport} from './report.js';
 
@@ -38,8 +38,15 @@ export const isStale = () => !!(S.result?.phase && S.phase && sig(S.result.phase
 function walk(tree, steps) {
   let id = tree.root, waiting = false;
   for (const s of steps) { const n = tree.nodes[id]; if (s.type === 'act') { if (n.edges.length === 1) id = n.edges[0].next; else waiting = true; } else { id = n.edges[s.i].next; waiting = false; } }
-  return {node: tree.nodes[id], waiting};
+  return {node: tree.nodes[id], id, waiting};
 }
+// 取り寄せた木（worker.js の expandTree）を、印（cut）の場所につなぐ
+function mergeSub(tree, at, sub) {
+  const off = tree.nodes.length;
+  for (const n of sub.nodes) { if (n.edges) n.edges = n.edges.map(e => ({...e, next: e.next + off})); tree.nodes.push(n); }
+  tree.nodes[at] = tree.nodes[off + sub.root];
+}
+let expanding = null;
 
 export function renderAnswer(root, rerender) {
   clearInterval(timer);
@@ -119,11 +126,16 @@ function resultView(R, rerender, {checkList} = {}) {
   if (R.tree) {
     S.play ||= {steps: []};
     const steps = S.play.steps;
-    const {node, waiting} = walk(R.tree, steps);
+    const {node, id: nodeId, waiting} = walk(R.tree, steps);
     const push = s => { steps.push(s); save(); rerender(); };
     if (!steps.length) add(h('div.lbl', '次の手'), nextView(R, false));
-    if (node.end && node.cut) {
-      // 答えが大きいので、この先の案内は省略した（worker.js の TREE_LIMIT）。ここから局面を作って計算し直すと続きが出る
+    if (node.end && node.cut && !node.expandErr && canExpand()) {
+      // 起きやすい手順に入らなかった引き：続きを、答えを出したスレッドから取り寄せる（計算し直しは要らない）
+      if (expanding !== node) { expanding = node; const tree = R.tree;
+        expandSolve(node.key, node.path, d => { expanding = null; if (d.tree) mergeSub(tree, nodeId, d.tree); else node.expandErr = d.error || '取り寄せられませんでした'; save(); rerender(); }); }
+      add(h('div.lbl', '次の手'), h('p.hint', '続きの手順を取り寄せています…'));
+    } else if (node.end && node.cut) {
+      // 答えを出したスレッドがもうない（読み込み直したなど）：ここから局面を作って計算し直すと続きが出る
       add(h('div.lbl', 'この先の案内は省略しました'), h('p.hint', `答えが大きいので、この先の手順は画面に入れていません（この先の達成率 ${pct(node.p)}）。「ここから局面を作る」で計算し直すと、続きの手順が出ます。`),
         R.setup && deck()?.id === R.deckId && h('button.big.pri.wide', {disabled: making, onclick: () => makePhase(R, steps, rerender, true)}, making ? '作っています…' : 'ここから局面を作る →'),
         makeErr && h('p.warnline', '作れませんでした：' + makeErr));

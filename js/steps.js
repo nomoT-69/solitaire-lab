@@ -33,7 +33,7 @@ const pct = x => (Math.round(x * 10000) / 100) + '%';
 const delta = (a, b, f = v => fmt(v)) => b === a ? f(b) : `${sign(b - a)} → ${f(b)}`;
 const factorText = v => '+' + (v - 100) + '%';
 const cells = r => {
-  if (r.type === 'end') return {step: '', act: r.n.cut ? '（この先は省略）' : r.n.reached ? `終わり：目標に届いた` : '終わり：目標に届かない', drawn: '', p: '', path: pct(r.pathP),
+  if (r.type === 'end') return {step: '', act: r.n.cut ? 'ほかの引き（この先は省略）' : r.n.reached ? `終わり：目標に届いた` : '終わり：目標に届かない', drawn: '', p: '', path: pct(r.pathP),
     score: fmt(r.n.st?.score ?? r.n.score), heat: '', extra: '', factor: '', bonus: '', stance: '', uses: '', drinks: '', future: r.n.cut ? pct(r.n.p) : r.n.reached ? '100%' : '0%'};
   const a = r.n.st, b = r.c.st;
   return {step: String(r.step), act: r.n.act, drawn: r.e.drawn.length ? r.e.drawn.map(x => x.name).join('・') : (r.branching ? '（ドロー札なし）' : ''),
@@ -61,6 +61,7 @@ function paths(tree) {
   const out = [];
   (function visit(id, acc, p, step) {
     const n = tree.nodes[id];
+    if (n.end && n.cut) return;   // 起きやすい手順に入らなかった引き（worker.js の TOP_PATHS）は、手順の一覧に入れない
     if (n.end) { out.push({rows: [...acc, {type: 'end', depth: 0, step, pathP: p, anc: [], n}], p, reached: n.reached, cut: !!n.cut, score: n.st?.score ?? n.score}); return; }
     n.edges.forEach((e, i) => {
       const c = tree.nodes[e.next], branching = n.edges.length > 1;
@@ -115,7 +116,7 @@ export function renderSteps(root, rerender) {
         h('button', {disabled: i === 0, onclick: () => go(i - 1)}, '◀ 前'),
         h('select', {onchange: e => go(Number(e.target.value))}, ps.slice(0, 1000).map((x, j) => h('option', {value: j, selected: j === i}, label(x, j)))),
         h('button', {disabled: i >= ps.length - 1, onclick: () => go(i + 1)}, '次 ▶'),
-        h('span.hint', `全 ${ps.length} 通り（起きやすい順）`)),
+        h('span.hint', R.tree.cut ? `起きやすい順に上位 ${ps.length} 通り（手順が多いので、ほかの引きは省略）` : `全 ${ps.length} 通り（起きやすい順）`)),
       h('div.pathchips', {}, ps.slice(0, 12).map((x, j) => h('button.mini', {class: [j === i && 'on', x.reached ? 'ok' : 'ng'].filter(Boolean).join(' '), onclick: () => go(j)}, `${j + 1}`)),
         ps.length > 12 && h('span.hint', '…ほかは上の一覧から')),
       h('p.pathsum', {class: P.reached ? 'ok' : 'ng'}, `手順${i + 1}：この手順になる確率 ${pct(P.p)}・${P.rows.length - 1} 手・${P.cut ? `ここまでのスコア ${fmt(P.score)}・この先は省略` : `終わりのスコア ${fmt(P.score)}・${P.reached ? '目標に届く' : '目標に届かない'}`}`),
@@ -131,7 +132,7 @@ export function renderSteps(root, rerender) {
   }
   root.append(h('section.panel.steps', {},
     h('div.row', {}, h('h2', '全手順（詳細）'), seg,
-      h('span.hint', `${rows.filter(r => r.type === 'move').length} 手・終わり方 ${ends.length} 通り（目標に届く ${ends.filter(r => r.n.reached).length} 通り）`),
+      h('span.hint', `${rows.filter(r => r.type === 'move').length} 手・終わり方 ${ends.filter(r => !r.n.cut).length} 通り（目標に届く ${ends.filter(r => r.n.reached).length} 通り）${R.tree.cut ? '・ほかの引きは省略' : ''}`),
       h('button.mini', {onclick: csv}, 'CSV に書き出す（全部の列）'),
       h('button.mini', {onclick: () => { S.ui.steps = false; rerender(); }}, '閉じる')),
     colPick,

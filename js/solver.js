@@ -1,21 +1,22 @@
 // 画面の側から計算を動かす（Web Worker の起動・中止・知らせの受け取り）。計算中も画面は固まらない。
 import {D} from './data.js';
 
-let worker = null, seq = 0, H = null, resumable = false, followable = false;
+let worker = null, seq = 0, H = null, resumable = false, followable = false, partial = false, expandCb = new Map(), expandSeq = 0;
 // handlers：{progress, update, result, table, error}。それぞれ worker からの知らせ（worker.js の先頭の説明）を受け取る
 // 答えが「続きから計算できる」（resumable）ときは、スレッドを止めずに残す（resumeSolve で続ける）
 // 答えが最適で、続きの局面を即答できる（canFollow）ときも、スレッドを残す。次の計算はそのスレッドで行い、follow:{path} があれば続きの局面の即答を、
 // なければ同じ局面で目標・基準を変えた答えの使い回し（retarget）を試す。どちらも使えなければ、前の計算を捨てて計算し直す（worker.js）
 export function startSolve({setup, target, opts, calcSettings, follow = null}, handlers) {
-  const reuse = !!worker && followable;
+  const reuse = !!worker && followable;   // （答えの木の続きを持っているだけのスレッドは使い回さない）
   if (!reuse) cancelSolve();
-  const id = ++seq; H = handlers; resumable = false; followable = false;
+  const id = ++seq; H = handlers; resumable = false; followable = false; partial = false;
   if (!reuse) worker = new Worker(new URL('./worker.js', import.meta.url), {type: 'module'});
   worker.onmessage = e => {
     if (e.data.id !== seq) return;
-    if (e.data.type === 'result') { resumable = !!e.data.result?.resumable; followable = !!e.data.result?.canFollow; }
+    if (e.data.type === 'expanded') { const cb = expandCb.get(e.data.at); expandCb.delete(e.data.at); cb?.(e.data); return; }
+    if (e.data.type === 'result') { resumable = !!e.data.result?.resumable; followable = !!e.data.result?.canFollow; partial = !!(e.data.result?.tree?.cut || e.data.result?.alt?.tree?.cut); }
     H[e.data.type]?.(e.data);
-    if (e.data.type === 'error' || (e.data.type === 'table' && !resumable && !followable)) cancelSolve();
+    if (e.data.type === 'error' || (e.data.type === 'table' && !resumable && !followable && !partial)) cancelSolve();
   };
   worker.onerror = e => { H.error?.({message: '計算のスレッドで問題が起きました：' + (e.message || '読み込みの失敗')}); cancelSolve(); };
   worker.postMessage({type: 'solve', id, csv: D.csv, calcSettings, setup, target, opts, follow: reuse ? follow : null, reuse});
@@ -30,7 +31,15 @@ export function resumeSolve(maxMs, handlers) {
   return true;
 }
 // 中止：スレッドごと止める（計算の途中でも、すぐ止まる）。続きからの計算もできなくなる
-export function cancelSolve() { worker?.terminate(); worker = null; resumable = false; followable = false; }
+export function cancelSolve() { worker?.terminate(); worker = null; resumable = false; followable = false; partial = false; for (const cb of expandCb.values()) cb({error: '中止しました'}); expandCb.clear(); }
+// 答えの木の「ほかの引き」の印（cut）の先を取り寄せる（答えを出したスレッドが残っている間だけ）。cb({tree}|{error})
+export const canExpand = () => !!worker && (partial || resumable || followable);
+export function expandSolve(key, path, cb) {
+  if (!canExpand()) return false;
+  const at = ++expandSeq; expandCb.set(at, cb);
+  worker.postMessage({type: 'expand', id: seq, at, key, path});
+  return true;
+}
 export const isRunning = () => !!worker;
 
 // 足した札の点検（Talos と Tecnai の照合）。計算とは別のスレッドで動かす

@@ -55,7 +55,7 @@ export function startRun(over = {}, {keep = false} = {}) {
   // 設定の比べる順（既定 ドリンク → 届く確率 → 手数）で、「95%の答えも出す」なら95%の答えも並べる（1.11.0、利用者の決定）
   const beyond = !!P.params?.beyondGoal;   // 点数を伸ばす（試作・未検証）。入れると温存・95% は使わない
   const saveD = !beyond && !!P.params?.saveDrinks;
-  const opts = {...(!saveD || st.both === false ? {criterion: 'max'} : {criterion: '95', both: true}), order: saveD ? st.order : 'pa', ...(beyond ? {beyondGoal: true} : {}), extras: ['ev', 'floor'].filter(k => st.extras[k]), maxMs: Math.max(1, over.budgetSec ?? st.budgetSec) * 1000, maxStates: over.maxStates ?? st.maxStates};
+  const opts = {...(!saveD || st.both === false ? {criterion: 'max'} : {criterion: '95', both: true}), order: saveD ? st.order : 'pa', ...(beyond ? {beyondGoal: true} : {}), ...(st.testTree ? {treeLimit: st.testTree.limit, topPaths: st.testTree.top} : {}), extras: ['ev', 'floor'].filter(k => st.extras[k]), maxMs: Math.max(1, over.budgetSec ?? st.budgetSec) * 1000, maxStates: over.maxStates ?? st.maxStates};
   lastOpts = opts;
   Object.assign(RUN, {status: 'running', stage: '準備中', started: Date.now(), interim: null, error: null, prev});
   S.result = null; S.play = null; save();
