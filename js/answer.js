@@ -165,13 +165,7 @@ function resultView(R, rerender, {checkList} = {}) {
         R.setup && deck()?.id === R.deckId && h('button.big.pri.wide', {disabled: making, onclick: () => makePhase(R, steps, rerender, false)}, making ? '作っています…' : '次のターンの局面を作る →'),
         makeErr && h('p.warnline', '作れませんでした：' + makeErr));
     } else if (waiting) {
-      if (node.edges.length > 6 && node.edges.some(e => e.drawn.length >= 2)) add(...drawPicker(node, push, steps.length, rerender));
-      else add(h('div.lbl', '何を引きましたか？'),
-        h('p.hint', '使った後の手札（色の枠＝ドロー札）'),
-        h('div.draws', node.edges.map((e, i) => h('button.drawbtn', {onclick: () => push({type: 'draw', i, label: drawnText(e.drawn)})},
-          h('div.dpics', (e.hand || e.drawn).slice(0, 6).map(x => h('span.hcard', {class: x.isNew !== false ? 'new' : 'old'}, pic('cards', x.id, x.name, 34)))),
-          h('b', drawnText(e.drawn)),
-          e.hand && h('span.handtxt', '手札：' + e.hand.map(x => x.name).join('・'))))));
+      add(...drawPicker(node, push, steps.length, rerender));   // いつも1枚ずつ選ぶ（1.14.4、利用者の決定。前は組み合わせが7通り以上のときだけで、それ以外は手札の一覧）
     } else {
       if (steps.length) add(h('div.lbl', '次の手'), h('div.nmain', {}, node.icon ? pic(node.icon.kind, node.icon.id, node.act, 64) : null, h('div.ntext', node.act)),
         h('div.kpis', {}, kpi('この先の達成率', pct(node.p))));
@@ -234,7 +228,7 @@ function drawPicker(node, push, key, rerender) {
     h('p.hint', pick.ids.length ? `${pick.ids.length + 1}枚目は？（順は関係ありません）` : '引いた札を1枚ずつ選んでください（順は関係ありません）'),
     pick.ids.length ? h('div.row.picked', {}, h('span', '選んだ札：' + pick.ids.map(id => names.get(id)).join('・')), h('button.mini', {onclick: () => { pick.ids.pop(); rerender(); }}, '1つ戻す')) : null,
     h('div.draws.chips', ids.map(id => h('button.drawbtn', {onclick: () => choose(id)}, pic('cards', id, names.get(id), 40), h('b', names.get(id))))),
-    ...exact.map(c => h('button.wide', {onclick: () => go(c)}, c.e.drawn.length ? `これで全部（${drawnText(c.e.drawn)}）` : 'ドロー札なし'))];
+    ...exact.map(c => h('button.wide', {onclick: () => go(c)}, (c.e.drawn.length ? `これで全部（${drawnText(c.e.drawn)}）` : 'ドロー札なし') + (exact.length > 1 && c.e.hand ? `　手札：${c.e.hand.map(x => x.name).join('・')}` : '')))];
 }
 
 // もう一方の答えの1行。押すと主の答えと入れ替える（局面・予算などの共通の項目は残す）
