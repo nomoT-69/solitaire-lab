@@ -13,6 +13,7 @@ export function reportText(note = '') {
   const o = {
     aegis: {gui: D.version.gui, engine: D.version.engine.commit, data: D.version.data.commit, images: !!D.images, browser: navigator.userAgent},
     note, settings: S.settings, calcSettings: S.calcSettings, setup, target,
+    mode: {saveDrinks: !!S.phase?.params?.saveDrinks, beyondGoal: !!S.phase?.params?.beyondGoal},   // 局面のチェック（報告から局面を戻すときに使う）
     result: R && {kind: R.kind, optimalityProven: R.optimalityProven, best: R.best && {p: R.best.p, d: R.best.d, a: R.best.a}, next: R.next, solver: R.solver, trials: R.trials, ms: R.ms, budgetSec: R.budgetSec, steps: S.play?.steps?.map(s => s.label)},
   };
   return '【Solitaire Lab 報告用】\n' + JSON.stringify(o);

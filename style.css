@@ -317,3 +317,9 @@ button.sec:hover:not(:disabled) { background: var(--acc2); }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
 .tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--infobg); color: var(--info); cursor: help; }
 .lastexam { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 2px 0 8px; }
+
+dialog.restore { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; width: min(720px, 92vw); background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
+dialog.restore::backdrop { background: rgba(0,0,0,.35); }
+dialog.restore h3 { margin: 0 0 6px; }
+.restoreta { width: 100%; box-sizing: border-box; font: 12px/1.4 ui-monospace, monospace; margin: 6px 0; }
+dialog.restore .row { gap: 8px; justify-content: flex-end; }
