@@ -17,14 +17,9 @@ export function heatCapScore(model,lambda=8,mu=1,o={}){const E=model.engine;if(!
   const stance=o.stance?s=>(Math.max(2,STANCE_MULT[s.st]??0)+(s.strB||0)/100)/2:()=>1;
   const gamma=o.growth||0;const BASE=0x100;
   const gAvg=gamma?s=>{const h=s.hand;if(!h||!h.length)return 0;let g=0;for(let i=0;i<h.length;i++)g+=E.types[h.charCodeAt(i)-BASE]?.g?.score||0;return g/h.length;}:()=>0;
-  // o.hold（試作・測定用、既定 0。2026-11-06、利用者の報告の局面の調べ・案 (a)）：保留した札（眠気以外）の数が根より増えた分 × o.hold だけ、「行動1回分の見込み」を引く。
+  // o.hold（既定 0。Aegis は既定 1＝AEGIS_HEAT_DEFAULT。2026-11-06、利用者の報告の局面の調べ・案 (a)、DESIGN 22.43）：保留した札（眠気以外）の数が根より増えた分 × o.hold だけ、「行動1回分の見込み」を引く。
   // 有効な札を保留するとこのターンで使えなくなる損を見込みに入れる（眠気を保留するのは損なし）
   const SLEEPY=23,wH=o.hold||0;const nHeld=s=>{let n=0;const h=s.held||'';for(let i=0;i<h.length;i++)if(E.types[h.charCodeAt(i)-BASE]?.card?.id!==SLEEPY)n++;return n;};const h0=wH?nHeld(E.root):0;
   const perAct=s=>(s.heat+pend(s)+mu*s.extra*s.factor/100+gamma*gAvg(s))*(s.em??1)*(1+s.bonus/100)*stance(s);
-  // o.material（試作・測定用、既定 0。案 (b)）：手札・山札・捨て札にある眠気以外の札の数（＝まだ使える材料）が根から変わった分 × material だけ、「行動1回分の見込み」を足す（減れば引く）。
-  // 保留・除外・使い切りで材料が減る。山札の中身は信念の content（どの候補でも同じ）から数え、信念ごとに覚える
-  const wM=o.material||0;const useful=z=>{let n=0;for(let i=0;i<z.length;i++)if(E.types[z.charCodeAt(i)-BASE]?.card?.id!==SLEEPY)n++;return n;};
-  const deckMemo=new Map();const deckUseful=d=>{let v=deckMemo.get(d);if(v===undefined){v=useful(E.beliefs[d].content);deckMemo.set(d,v);}return v;};
-  const nMat=s=>useful(s.hand)+useful(s.disc)+deckUseful(s.deck);const m0=wM?nMat(E.root):0;
   return (s,pg)=>pg+lambda*(s.uses+1)*(s.heat+pend(s)+mu*(s.uses+1)*s.extra*s.factor/100+gamma*gAvg(s))*(s.em??1)*(1+s.bonus/100)*stance(s)*t
-    -(wH?wH*lambda*Math.max(0,nHeld(s)-h0)*perAct(s)*t:0)+(wM?wM*lambda*(nMat(s)-m0)*perAct(s)*t:0);}
+    -(wH?wH*lambda*Math.max(0,nHeld(s)-h0)*perAct(s)*t:0);}

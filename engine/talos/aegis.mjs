@@ -65,7 +65,8 @@ const heatAsMax=(opts,st,crit)=>st.heat&&!crit&&opts.alphaHeatMax===true;
 const capLabel=st=>st.cap+(st.heat?'・熱意の見込み':'');
 // 見込みの既定（G2 2026-11-06、利用者の決定「重み1を既定に」。DESIGN 22.43）：保留した有効な札（眠気以外）の分を見込みから引く（heatOpts.hold=1）。
 // 層の上限の段・Javelin の手の順・点数を伸ばすの段に効く。opts.heatOpts:{} で前の見込み
-const withHeatDefault=opts=>opts.heatOpts===undefined?{...opts,heatOpts:{hold:1}}:opts;
+export const AEGIS_HEAT_DEFAULT=Object.freeze({hold:1});
+const withHeatDefault=opts=>opts.heatOpts===undefined?{...opts,heatOpts:AEGIS_HEAT_DEFAULT}:opts;
 export function solveAegis(model,opts={}){
   opts=withHeatDefault(opts);
   // 最後の試験の「点数を伸ばす」（opts.beyondGoal、G2 2026-11-06、利用者の決定。GUI のチェック。既定は「目標点まででよい」＝今の計算）：
