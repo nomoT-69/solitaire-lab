@@ -93,3 +93,28 @@ export function openRestore(go) {
     }}, '戻す'), h('button', {onclick: () => { dlg.close(); dlg.remove(); }}, 'やめる')));
   document.body.append(dlg); dlg.showModal(); ta.focus();
 }
+
+// PC の道具（tools/solve-report.mjs）が保存した答えのファイル（報告.txt.answer.json）を読み込む。
+// 局面を報告から戻し（新しいデッキと局面）、答えをそのまま入れる。プレイの案内・全手順は、ふつうに計算したときと同じに使える。
+// 答えの木の「ほかの引き」の印（cut）の先は取り寄せられない（PC で計算したので）→「ここから局面を作る」で計算し直す
+export function importAnswer(go) {
+  const inp = h('input', {type: 'file', accept: '.json,application/json'});
+  inp.onchange = async () => {
+    try {
+      const f = inp.files[0]; if (!f) return;
+      const a = JSON.parse(await f.text());
+      if (a.format !== 'solitaire-lab-answer' || !a.result || !a.report?.setup) throw Error('答えのファイルではありません（solve-report.mjs が作る ○○.answer.json を選んでください）');
+      const {dk, P, missing} = phaseFromReport({setup: a.report.setup, target: a.report.target, mode: a.report.mode});
+      if (missing.length) throw Error('このデータにない札があります（番号 ' + missing.join('・') + '）');
+      if (S.phase) { S.history.unshift({at: Date.now(), deckId: S.phase.deckId, label: '答えのファイルを読み込む前の局面', phase: structuredClone(S.phase)}); S.history = S.history.slice(0, 30); }
+      dk.name = 'PC の答え ' + dk.name.replace(/^報告から /, '');
+      S.decks.push(dk); S.deckId = dk.id; S.phase = P;
+      S.result = {...a.result, target: a.report.target, setup: a.report.setup, phase: structuredClone(P), budgetSec: a.sec, calcSettings: a.report.calcSettings ?? null, deckId: dk.id, at: Date.now(),
+        imported: true, resumable: false, canFollow: false};
+      S.play = null; save();
+      toast(`PC で計算した答えを読み込みました（予算 ${a.sec}秒）`);
+      go('turn');
+    } catch (e) { alert('読み込めませんでした：' + e.message); }
+  };
+  inp.click();
+}

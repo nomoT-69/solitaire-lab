@@ -1,5 +1,5 @@
 // Solitaire Lab（内部の名前 Pallas）の入口：データを読み、タブで画面を切り替える
-import {openRestore} from './restore.js';
+import {openRestore, importAnswer} from './restore.js';
 import {loadAll, D, syncCustomCards} from './data.js';
 import {S, save, deck} from './store.js';
 import {h, closePop, popover} from './ui.js';
@@ -38,7 +38,8 @@ function render() {
           {label: '概要（はじめての方へ）', onclick: () => window.open('manual/summary.html', '_blank', 'noopener')},
           {label: '使い方（詳細マニュアル）', onclick: () => window.open('manual/index.html', '_blank', 'noopener')},
           {label: '答えがおかしい？ 報告用の情報をコピー', onclick: copyReport},
-          {label: '報告から局面を戻す（貼り付け）', onclick: () => openRestore(go)}])}, 'ヘルプ ▾'),
+          {label: '報告から局面を戻す（貼り付け）', onclick: () => openRestore(go)},
+          {label: 'PC で計算した答えのファイルを読み込む', onclick: () => importAnswer(go)}])}, 'ヘルプ ▾'),
         h('button.menu', {class: SUB.some(([k]) => k === tab[0]) ? 'on' : '', onclick: e => popover(e.currentTarget, '', SUB.map(([k, t]) => ({label: t, disabled: k === tab[0], onclick: () => go(k)})))},
           (SUB.find(([k]) => k === tab[0])?.[1] || '設定') + ' ▾'))),
     main,

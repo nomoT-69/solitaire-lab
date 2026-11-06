@@ -131,7 +131,8 @@ function tableAfter(model, r, base, left, post, t0) {
   } else post('table', {rows: null, note: '時間内に比較表を作れませんでした'});
 }
 const ALPHA = {'95': Q.R(19, 20), '99': Q.R(99, 100), '100': Q.R(1)};
-const pct = x => { const v = x * 100; return (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')) + '%'; };
+// 0 より大きいのに 0.01% 未満の確率は、0% と読めないように有効数字2桁で出す（例 0.0031%）
+const pct = x => { const v = x * 100; if (v > 0 && v < 0.01) return Number(v.toPrecision(2)) + '%'; return (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')) + '%'; };
 
 self.onmessage = e => {
   const m = e.data;
@@ -190,13 +191,13 @@ self.onmessage = e => {
     post('progress', {stage: '局面を作成中', ms: Date.now() - t0});
     const model = T.tecnaiModel(data, m.setup, m.target);
     const o = m.opts;
-    const base = {order: o.order.split(''), extras: o.extras, maxMs: o.maxMs, maxStates: o.maxStates, maxHeapMiB: MAX_HEAP_MIB, maxEstMiB: 'maxEstMiB' in o ? o.maxEstMiB : MAX_EST_MIB, caps: o.caps || CAPS};   // caps・maxEstMiB は試験用に opts で上書きできる（画面からは渡さない）
+    const base = {order: o.order.split(''), extras: o.extras, maxMs: o.maxMs, maxStates: o.maxStates, maxHeapMiB: o.maxHeapMiB ?? MAX_HEAP_MIB, maxEstMiB: 'maxEstMiB' in o ? o.maxEstMiB : MAX_EST_MIB, caps: o.caps || CAPS};   // caps・maxEstMiB・maxHeapMiB は試験と PC の道具（tools/solve-report.mjs）で opts から上書きできる（画面からは渡さない）
     // 点数を伸ばす（試作・未検証、1.12.0）：届く確率 → 届いた先も含めた期待最終点。続きから・即答・95% はない（計算の部品 1eafcc5）
     if (o.beyondGoal) {
       dropJob(); F = null;
       post('progress', {stage: '計算中（点数を伸ばす）', ms: Date.now() - t0});
       const onUpdate = u => { try { post('update', {result: summarize1(model, u, o, Date.now() - t0, false)}); } catch {} };
-      const r = A.solveAegis(model, {beyondGoal: true, maxMs: o.maxMs, maxEstMiB: base.maxEstMiB, maxHeapMiB: MAX_HEAP_MIB, onUpdate});
+      const r = A.solveAegis(model, {beyondGoal: true, maxMs: o.maxMs, maxEstMiB: base.maxEstMiB, maxHeapMiB: base.maxHeapMiB, onUpdate});
       const out = summarize1(model, r, o, Date.now() - t0, true);
       out.canFollow = false; out.resumable = false;
       post('result', {result: out});

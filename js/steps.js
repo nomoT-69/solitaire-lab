@@ -29,7 +29,8 @@ function flatten(tree) {
 }
 
 const sign = x => (x > 0 ? '+' : x < 0 ? '−' : '±') + fmt(Math.abs(x));
-const pct = x => (Math.round(x * 10000) / 100) + '%';
+// 0 より大きいのに 0.01% 未満の確率は、0% と読めないように有効数字2桁で出す（例 0.0031%）
+const pct = x => { const v = x * 100; if (v > 0 && v < 0.01) return Number(v.toPrecision(2)) + '%'; return (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')) + '%'; };
 const delta = (a, b, f = v => fmt(v)) => b === a ? f(b) : `${sign(b - a)} → ${f(b)}`;
 const factorText = v => '+' + (v - 100) + '%';
 const cells = r => {

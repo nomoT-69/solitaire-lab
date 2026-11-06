@@ -18,7 +18,8 @@ const secText = ms => ms < 1000 ? '1秒未満' : ms < 10000 ? (ms / 1000).toFixe
 const headOrder = R => R.objective === 'beyondGoal' ? '点数を伸ばす（届く確率 → 期待最終点・試作）・' : !R.order ? '' : !R.order.includes('d') ? ordWords(R.order) + '・'
   : 'ドリンクを温存（' + (R.criterion === 'max' ? '届く確率 → ' : `達成率 ${R.criterion}% 以上で `) + ordWords(R.order.replace('p', '')) + '）・';
 const ordWords = o => o.split('').map(c => ({d: 'ドリンク', p: '届く確率', a: '手数'})[c]).join(' → ');
-const pct = x => (Math.round(x * 10000) / 100) + '%';
+// 0 より大きいのに 0.01% 未満の確率は、0% と読めないように有効数字2桁で出す（例 0.0031%）
+const pct = x => { const v = x * 100; if (v > 0 && v < 0.01) return Number(v.toPrecision(2)) + '%'; return (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')) + '%'; };
 const drawnText = d => d.length ? 'ドロー札：' + d.map(x => x.name).join('・') : '（ドロー札なし）';
 let detailsOpen = false, making = false, makeErr = null, timer = null;
 // 計算する（over：この1回だけの予算）。計算した局面は「前の局面」に残す
@@ -115,6 +116,7 @@ function resultView(R, rerender, {checkList} = {}) {
   for (const n of R.notes || []) add(h('p.warnline', n));   // 計算の部品の注意書き
   const tags = [R.followed && ['前の答えから即答', '前の局面の答えから読み出しました（計算し直していません。答えは計算し直したときと同じです）'],
     R.retargeted && ['前の計算を使用', '同じ局面の前の計算を使って、目標・基準を変えた答えを出しました（答えは計算し直したときと同じです）'],
+    R.imported && ['PC で計算した答え', 'PC の道具（solve-report.mjs）で計算した答えを読み込みました。手順の木の「ほかの引き」の先は、ここから局面を作って計算し直してください'],
     R.keptPrev && ['前の答えを残した', '予算を増やして計算し直しましたが、前の答えより良い答えは見つからなかったので、前の答えを残しました']].filter(Boolean);
   if (tags.length) add(h('div.tags', {}, tags.map(([t, d]) => h('span.tag', {title: d}, t))));
   // 達成率を指定した計算（95% など）で、その達成率に届かない暫定の答え
