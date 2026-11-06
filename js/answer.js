@@ -122,7 +122,12 @@ function resultView(R, rerender, {checkList} = {}) {
     const {node, waiting} = walk(R.tree, steps);
     const push = s => { steps.push(s); save(); rerender(); };
     if (!steps.length) add(h('div.lbl', '次の手'), nextView(R, false));
-    if (node.end) {
+    if (node.end && node.cut) {
+      // 答えが大きいので、この先の案内は省略した（worker.js の TREE_LIMIT）。ここから局面を作って計算し直すと続きが出る
+      add(h('div.lbl', 'この先の案内は省略しました'), h('p.hint', `答えが大きいので、この先の手順は画面に入れていません（この先の達成率 ${pct(node.p)}）。「ここから局面を作る」で計算し直すと、続きの手順が出ます。`),
+        R.setup && deck()?.id === R.deckId && h('button.big.pri.wide', {disabled: making, onclick: () => makePhase(R, steps, rerender, true)}, making ? '作っています…' : 'ここから局面を作る →'),
+        makeErr && h('p.warnline', '作れませんでした：' + makeErr));
+    } else if (node.end) {
       add(h('div.lbl', 'ここで終わり'), h('div.ntext.mid', node.reached ? '目標点に届きました' : 'これ以上は打ちません'),
         R.setup && deck()?.id === R.deckId && h('button.big.pri.wide', {disabled: making, onclick: () => makePhase(R, steps, rerender, false)}, making ? '作っています…' : '次のターンの局面を作る →'),
         makeErr && h('p.warnline', '作れませんでした：' + makeErr));

@@ -33,8 +33,8 @@ const pct = x => (Math.round(x * 10000) / 100) + '%';
 const delta = (a, b, f = v => fmt(v)) => b === a ? f(b) : `${sign(b - a)} → ${f(b)}`;
 const factorText = v => '+' + (v - 100) + '%';
 const cells = r => {
-  if (r.type === 'end') return {step: '', act: r.n.reached ? `終わり：目標に届いた` : '終わり：目標に届かない', drawn: '', p: '', path: pct(r.pathP),
-    score: fmt(r.n.st?.score ?? r.n.score), heat: '', extra: '', factor: '', bonus: '', stance: '', uses: '', drinks: '', future: r.n.reached ? '100%' : '0%'};
+  if (r.type === 'end') return {step: '', act: r.n.cut ? '（この先は省略）' : r.n.reached ? `終わり：目標に届いた` : '終わり：目標に届かない', drawn: '', p: '', path: pct(r.pathP),
+    score: fmt(r.n.st?.score ?? r.n.score), heat: '', extra: '', factor: '', bonus: '', stance: '', uses: '', drinks: '', future: r.n.cut ? pct(r.n.p) : r.n.reached ? '100%' : '0%'};
   const a = r.n.st, b = r.c.st;
   return {step: String(r.step), act: r.n.act, drawn: r.e.drawn.length ? r.e.drawn.map(x => x.name).join('・') : (r.branching ? '（ドロー札なし）' : ''),
     p: r.branching ? `${r.e.pText}（${pct(r.e.p)}）` : '', path: pct(r.pathP),
@@ -61,7 +61,7 @@ function paths(tree) {
   const out = [];
   (function visit(id, acc, p, step) {
     const n = tree.nodes[id];
-    if (n.end) { out.push({rows: [...acc, {type: 'end', depth: 0, step, pathP: p, anc: [], n}], p, reached: n.reached, score: n.st?.score ?? n.score}); return; }
+    if (n.end) { out.push({rows: [...acc, {type: 'end', depth: 0, step, pathP: p, anc: [], n}], p, reached: n.reached, cut: !!n.cut, score: n.st?.score ?? n.score}); return; }
     n.edges.forEach((e, i) => {
       const c = tree.nodes[e.next], branching = n.edges.length > 1;
       visit(e.next, [...acc, {type: 'move', key: id + '-' + i, depth: 0, step, pathP: p * e.p, anc: [], n, e, i, c, branching, first: true}], p * e.p, step + 1);
@@ -96,7 +96,7 @@ export function renderSteps(root, rerender) {
   const tr = (r, opts = {}) => {
     const c = cells(r);
     const fold = opts.fold && r.type === 'move' && r.branching;
-    return h('tr', {class: [r.type, fold && 'fold', fold && collapsed.has(r.key) && 'closed', opts.fold && r.type === 'move' && !r.first && 'sib', r.type === 'end' && (r.n.reached ? 'ok' : 'ng')].filter(Boolean).join(' '),
+    return h('tr', {class: [r.type, fold && 'fold', fold && collapsed.has(r.key) && 'closed', opts.fold && r.type === 'move' && !r.first && 'sib', r.type === 'end' && (r.n.cut ? 'cut' : r.n.reached ? 'ok' : 'ng')].filter(Boolean).join(' '),
       onclick: fold ? () => { collapsed.has(r.key) ? collapsed.delete(r.key) : collapsed.add(r.key); rerender(); } : null},
       COLS.map(([k]) => k === 'act'
         ? h('td.act', {style: {paddingLeft: (8 + r.depth * 16) + 'px'}}, fold ? (collapsed.has(r.key) ? '▸ ' : '▾ ') : '', c.act)
@@ -109,7 +109,7 @@ export function renderSteps(root, rerender) {
     const ps = paths(R.tree);
     const i = Math.max(0, Math.min(ps.length - 1, S.ui.stepPath || 0)), P = ps[i];
     const go = j => { S.ui.stepPath = Math.max(0, Math.min(ps.length - 1, j)); save(); rerender(); };
-    const label = (x, j) => `手順${j + 1}（確率 ${pct(x.p)}・${x.reached ? '届く' : '届かない'}）`;
+    const label = (x, j) => `手順${j + 1}（確率 ${pct(x.p)}・${x.cut ? '途中まで' : x.reached ? '届く' : '届かない'}）`;
     view = h('div', {},
       h('div.pathnav', {},
         h('button', {disabled: i === 0, onclick: () => go(i - 1)}, '◀ 前'),
@@ -118,7 +118,7 @@ export function renderSteps(root, rerender) {
         h('span.hint', `全 ${ps.length} 通り（起きやすい順）`)),
       h('div.pathchips', {}, ps.slice(0, 12).map((x, j) => h('button.mini', {class: [j === i && 'on', x.reached ? 'ok' : 'ng'].filter(Boolean).join(' '), onclick: () => go(j)}, `${j + 1}`)),
         ps.length > 12 && h('span.hint', '…ほかは上の一覧から')),
-      h('p.pathsum', {class: P.reached ? 'ok' : 'ng'}, `手順${i + 1}：この手順になる確率 ${pct(P.p)}・${P.rows.length - 1} 手・終わりのスコア ${fmt(P.score)}・${P.reached ? '目標に届く' : '目標に届かない'}`),
+      h('p.pathsum', {class: P.reached ? 'ok' : 'ng'}, `手順${i + 1}：この手順になる確率 ${pct(P.p)}・${P.rows.length - 1} 手・${P.cut ? `ここまでのスコア ${fmt(P.score)}・この先は省略` : `終わりのスコア ${fmt(P.score)}・${P.reached ? '目標に届く' : '目標に届かない'}`}`),
       table(P.rows.map(r => tr(r))));
   } else {
     const visible = rows.filter(r => !r.anc.some(k => collapsed.has(k)));

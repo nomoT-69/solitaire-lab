@@ -317,11 +317,29 @@ function stOf(E, s) {
   return {score: s.score, heat: d.enthusiasm, extra: d.extra, factor: d.factor, bonus: d.bonus, stance: d.stance, uses: d.uses, drinks: (d.drinks || []).length};
 }
 
+// 画面に送る木の大きさの上限（分かれの数）。これを超える答えは、浅い手順から入るだけ入れて、その先は「省略」の印にする
+// （VEIL の報告 2026-11-06：分かれ 57万の答えを送ると 360MB になり、ブラウザの画面が落ちた（エラーコード 5））
+const TREE_LIMIT = 20000;
 function playTree(model, pol) {
   const E = model.engine;
   const nodes = [];
-  function walk(s, id) {
+  // 深さごとの数を数えて、上限に入る深さまでを全部入れる
+  let maxDepth = Infinity;
+  { let level = [pol.root], total = 0, d = 0;
+    while (level.length) { total += level.length; if (total > TREE_LIMIT) { maxDepth = d - 1; break; } level = level.flatMap(id => (pol.nodes[id].edges || []).map(e => e.next)); d++; } }
+  // 省略した先の値（届く確率・ドリンク・手数）だけを計算する（中身は送らない）
+  function valueOf(s, id) {
     const n = pol.nodes[id];
+    if (n.choice === null) return [s.score >= model.target ? 1 : 0, 0, 0];
+    const act = model.choices(s).find(a => JSON.stringify(a.raw ?? a) === JSON.stringify(n.choice));
+    if (!act) throw Error('方策の木の手が、局面の合法手に見つかりません');
+    let p = 0, d = n.choice.type === 'drink' ? 1 : 0, a = n.choice.type === 'skip' ? 0 : 1;
+    model.branches(s, act).forEach((b, i) => { const [cp, cd, ca] = valueOf(b.s, n.edges[i].next); p += b.pFloat * cp; d += b.pFloat * cd; a += b.pFloat * ca; });
+    return [p, d, a];
+  }
+  function walk(s, id, depth = 0) {
+    const n = pol.nodes[id];
+    if (n.choice !== null && depth > maxDepth) { const [p, d, a] = valueOf(s, id); nodes.push({end: true, cut: true, reached: false, score: s.score, p, d, a, st: stOf(E, s)}); return nodes.length - 1; }
     if (n.choice === null) { nodes.push({end: true, reached: s.score >= model.target, score: s.score, p: s.score >= model.target ? 1 : 0, d: 0, a: 0, st: stOf(E, s)}); return nodes.length - 1; }
     const act = model.choices(s).find(a => JSON.stringify(a.raw ?? a) === JSON.stringify(n.choice));
     if (!act) throw Error('方策の木の手が、局面の合法手に見つかりません');
@@ -332,7 +350,7 @@ function playTree(model, pol) {
     let p = 0, d = n.choice.type === 'drink' ? 1 : 0, a = n.choice.type === 'skip' ? 0 : 1;
     br.forEach((b, i) => {
       const {hand, drawn, exchanged} = drawnOf(E, model.data ?? cache.data, s, n.choice, b.s);
-      const next = walk(b.s, n.edges[i].next);
+      const next = walk(b.s, n.edges[i].next, depth + 1);
       const c = nodes[next];
       p += b.pFloat * c.p; d += b.pFloat * c.d; a += b.pFloat * c.a;
       // 継続効果（夏夜など）：カウンタの動きと、その1手で出したスコア
@@ -344,7 +362,7 @@ function playTree(model, pol) {
     return idx;
   }
   const root = walk(model.root, pol.root);
-  return {root, nodes};
+  return {root, nodes, cut: maxDepth !== Infinity};
 }
 
 // 答えを画面の形にする。α の計算で達成率最大の答え（maxResult）もあれば、達成率最大を主に、α の答えを alt に入れて返す（同じ答えなら alt なし）
