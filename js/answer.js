@@ -14,6 +14,10 @@ const EXTRA_NAME = {ev: '期待最終点', floor: '最低最終点'};
 const num1 = x => x === null || x === undefined ? '—' : (Math.round(x * 10) / 10).toLocaleString('ja-JP');
 const num3 = x => x === null || x === undefined ? '—' : (Math.round(x * 1000) / 1000).toLocaleString('ja-JP');
 const secText = ms => ms < 1000 ? '1秒未満' : ms < 10000 ? (ms / 1000).toFixed(1) + '秒' : Math.round(ms / 1000) + '秒';
+// 見出しの比べる順：温存しない（d なし）は「届く確率 → 手数」。温存するときは、達成率最大なら届く確率を先に、95% なら「95%以上で」
+const headOrder = R => !R.order ? '' : !R.order.includes('d') ? ordWords(R.order) + '・'
+  : 'ドリンクを温存（' + (R.criterion === 'max' ? '届く確率 → ' : `達成率 ${R.criterion}% 以上で `) + ordWords(R.order.replace('p', '')) + '）・';
+const ordWords = o => o.split('').map(c => ({d: 'ドリンク', p: '届く確率', a: '手数'})[c]).join(' → ');
 const pct = x => (Math.round(x * 10000) / 100) + '%';
 const drawnText = d => d.length ? 'ドロー札：' + d.map(x => x.name).join('・') : '（ドロー札なし）';
 let detailsOpen = false, making = false, makeErr = null, timer = null;
@@ -98,7 +102,7 @@ function resultView(R, rerender, {checkList} = {}) {
   const box = h('section.panel.ans', {});
   const add = (...xs) => box.append(...xs.filter(x => x));   // false・null は出さない
   add(h('div.ansHead', {}, h('span.status', {class: stCls, title: stDesc}, stName + (R.canceled ? '（中止）' : '')),
-    h('span.hint', {title: R.criterion === 'max' ? '達成率最大の答え' : `${R.criterion}%で良ければの答え`}, secText(R.ms) + 'で計算')));
+    h('span.hint', {title: R.criterion === 'max' ? '達成率最大の答え' : `${R.criterion}%で良ければの答え`}, headOrder(R) + secText(R.ms) + 'で計算')));
   for (const n of R.notes || []) add(h('p.warnline', n));   // 計算の部品の注意書き
   const tags = [R.followed && ['前の答えから即答', '前の局面の答えから読み出しました（計算し直していません。答えは計算し直したときと同じです）'],
     R.retargeted && ['前の計算を使用', '同じ局面の前の計算を使って、目標・基準を変えた答えを出しました（答えは計算し直したときと同じです）'],
@@ -140,7 +144,7 @@ function resultView(R, rerender, {checkList} = {}) {
     }
     if (steps.length) add(h('div.histline', {}, h('ol', steps.map(s => h('li', {class: s.type}, s.type === 'act' ? s.label.replace(/ を(使う|飲む)$/, '') : s.label))),
       h('div.row', {}, h('button.mini', {onclick: () => { steps.pop(); save(); rerender(); }}, '1つ戻す'), h('button.mini', {onclick: () => { S.play = {steps: []}; save(); rerender(); }}, '最初から'))));
-  } else add(h('div.lbl', '次の手'), nextView(R, false));
+  } else add(h('div.lbl', '次の手'), nextView(R, false), R.treeDropped && h('p.hint', '答えが大きいので、プレイの案内（使った → 引いた札）は保存していません。続けて案内を使うときは、計算し直してください。'));
 
   // もう一方の答え（達成率最大 ⇔ 95%で良ければ）：1行で出し、「こちらでプレイする」で入れ替える（1.8.0、利用者の決定 A）
   if (R.alt && !(S.play?.steps?.length)) add(altView(R, rerender));

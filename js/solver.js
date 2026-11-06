@@ -53,14 +53,3 @@ export function turnEnd({setup, target, calcSettings, path}, {done, error}) {
   w.postMessage({type: 'nextTurn', id: 1, csv: D.csv, setup, target, calcSettings, path});
 }
 
-// この局面で取れる点（solveTargetTable）。計算とは別のスレッドで動かす。中止できる
-let tabler = null;
-export function startTargetTable({setup, calcSettings}, {done, error}) {
-  tabler?.terminate();
-  tabler = new Worker(new URL('./worker.js', import.meta.url), {type: 'module'});
-  const end = () => { tabler?.terminate(); tabler = null; };
-  tabler.onmessage = e => { if (e.data.type === 'targetTable') { done(e.data.result); end(); } else if (e.data.type === 'error') { error(e.data.message); end(); } };
-  tabler.onerror = e => { error('計算のスレッドで問題が起きました：' + (e.message || '読み込みの失敗')); end(); };
-  tabler.postMessage({type: 'targetTable', id: 1, csv: D.csv, calcSettings, setup});
-}
-export function cancelTargetTable() { tabler?.terminate(); tabler = null; }

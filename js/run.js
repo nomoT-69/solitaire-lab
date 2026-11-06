@@ -51,7 +51,10 @@ export function startRun(over = {}, {keep = false} = {}) {
   const phase0 = structuredClone(P);   // 計算した局面（次のターンの局面を作るときの元）
   const st = S.settings;
   // 達成の基準：設定「95%の答えも出す」（既定オン）なら達成率最大と95%を並べて出す。外すと達成率最大だけ（速い）。1.8.1、利用者の決定
-  const opts = {...(st.both === false ? {criterion: 'max'} : {criterion: '95', both: true}), order: st.order, extras: ['ev', 'floor'].filter(k => st.extras[k]), maxMs: Math.max(1, over.budgetSec ?? st.budgetSec) * 1000, maxStates: over.maxStates ?? st.maxStates};
+  // 既定はドリンクを温存しない：届く確率 → 手数、達成率最大だけ。局面の「ドリンクを温存する」（HIF の1回目の試験）を入れたときだけ、
+  // 設定の比べる順（既定 ドリンク → 届く確率 → 手数）で、「95%の答えも出す」なら95%の答えも並べる（1.11.0、利用者の決定）
+  const saveD = !!P.params?.saveDrinks;
+  const opts = {...(!saveD || st.both === false ? {criterion: 'max'} : {criterion: '95', both: true}), order: saveD ? st.order : 'pa', extras: ['ev', 'floor'].filter(k => st.extras[k]), maxMs: Math.max(1, over.budgetSec ?? st.budgetSec) * 1000, maxStates: over.maxStates ?? st.maxStates};
   lastOpts = opts;
   Object.assign(RUN, {status: 'running', stage: '準備中', started: Date.now(), interim: null, error: null, prev});
   S.result = null; S.play = null; save();

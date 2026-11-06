@@ -8,11 +8,8 @@ import {ensurePhase, entries, zoneOf, growthOf, extraGrowth, setAssume, ZONES, Z
 import {renderAnswer, isStale} from './answer.js';
 import {renderSteps} from './steps.js';
 import {currentSetup} from './run.js';
-import {startTargetTable, cancelTargetTable} from './solver.js';
 
 let showMore = false;
-// この局面で取れる点（目標点を決める手がかり）。sig＝調べた局面（目標点を除く）の印。局面を変えたら古い値と分かるように
-let TT = {running: false, result: null, error: null, sig: null, started: 0, showCurve: false}, ttRerender = () => {};
 
 export function renderTurn(root, rerender) {
   const dk = deck();
@@ -89,18 +86,11 @@ export function renderTurn(root, rerender) {
     h('div.hudrow', {},
       h('div.stances', {}, h('span.sl', '指針', qtip('ゲームの画面の、今の指針。温存・強気の「2段階」は、指針の段階が2のとき')), h('div.seg', {}, STANCES.map(([v, t]) => h('button', {class: 'st ' + v + (p.stance === v ? ' on' : ''), onclick: () => setp('stance')(v)}, t)))),
       stepper('行動回数', 'cardUses', {min: 1, max: 20, tip: 'このターンに、まだ札を使える回数（ゲームの画面のスキルカード使用数）'}),
-      field('目標点', 'target', {width: 9, cls: 'big', tip: 'このターンで届かせたい点数。プレイの途中から作った局面では、それまでに入った点を引いた値'}),
-      h('div.ttbtn', {}, TT.running
-        ? h('button', {onclick: () => { cancelTargetTable(); TT = {...TT, running: false, error: '中止しました'}; rerender(); }}, `取れる点を調べています…（${Math.round((Date.now() - TT.started) / 1000)}秒）中止`)
-        : h('button', {title: 'この局面で、確率100%で届く最大の点・50%で届く最大の点・最大の点を調べます（重い局面で十数秒）', onclick: () => {
-            let s; try { s = currentSetup(); } catch (e) { TT = {...TT, error: '局面を読み込めません：' + e.message}; rerender(); return; }
-            TT = {running: true, result: null, error: null, sig: JSON.stringify(s.setup), started: Date.now(), showCurve: false}; ttRerender = rerender; rerender();
-            const tick = setInterval(() => { if (!TT.running) clearInterval(tick); else ttRerender(); }, 1000);
-            startTargetTable({setup: s.setup, calcSettings: S.calcSettings}, {
-              done: r => { TT = {...TT, running: false, result: r}; ttRerender(); },
-              error: m => { TT = {...TT, running: false, error: m}; ttRerender(); }});
-          }}, 'この局面で取れる点を調べる'))),
-    targetBox(),
+      field('目標点', 'target', {width: 9, cls: 'big', tip: 'このターンで届かせたい点数。プレイの途中から作った局面では、それまでに入った点を引いた値'})),
+    // ドリンクを温存する（HIF の1回目の試験）。既定は温存しない（届く確率 → 手数）。1.11.0、利用者の決定
+    h('div.lastexam', {}, h('label.f', {}, h('input', {type: 'checkbox', checked: !!p.saveDrinks, onchange: e => { p.saveDrinks = e.target.checked; touch(); }}), 'ドリンクを温存する（HIF の1回目の試験）'),
+      qtip('HIF（試験が2回続くシナリオ）の1回目で、2回目のためにドリンクを残したいときに入れます。入れると、届く確率 → ドリンク → 手数 の順で比べ、ドリンクを少なく使う手を選びます。ほかのシナリオ・HIF の2回目では入れなくてかまいません（ドリンクは比べず、届く確率 → 手数 の順）'),
+      p.saveDrinks && h('label.f.both', {}, h('input', {type: 'checkbox', checked: S.settings.both !== false, onchange: e => { S.settings.both = e.target.checked; touch(); }}), '95%の答えも出す（少し遅くなる）')),
     h('div.hudrow', {},
       field('熱意', 'enthusiasm', {tip: 'ゲームの画面の、今の熱意の値'}), field('熱意追加', 'enthusiasmBonus', {tip: 'ゲームの画面の、熱意追加の値'}),
       field('熱意倍率', 'enthusiasmBuff', {step: 10, plus: true, tip: 'ゲームの表示の「＋何%」をそのまま入れる（P アイテムなどで上がった分も含む）'}),
@@ -117,31 +107,6 @@ export function renderTurn(root, rerender) {
     itemBox(),
     h('button.more', {onclick: () => { showMore = !showMore; rerender(); }}, (showMore ? '▾' : '▸') + ' 詳しい条件（直前の指針・回数・継続効果・成長・前の局面）'),
     showMore && moreBox());
-
-  // この局面で取れる点の結果。数字を押すと、その点を目標点に入れる
-  function targetBox() {
-    if (TT.error && !TT.result) return h('p.warnline', '取れる点を調べられませんでした：' + TT.error);
-    const r = TT.result; if (!r) return null;
-    let sig = null; try { sig = JSON.stringify(currentSetup().setup); } catch {}
-    const old = sig !== TT.sig;
-    if (r.status !== 'complete' && r.sure == null && r.max == null) return h('p.warnline', '時間内に調べ終わりませんでした（' + (r.reason || '') + '）');
-    const more = r.exact ? '' : '以上';
-    const pt = (label, v, tip) => v == null ? h('span.ttv.none', label + '：なし')
-      : h('button.ttv', {title: tip + '。押すと、この点を目標点に入れます', onclick: () => { p.target = v; TT.picked = {v, exact: !!r.exact, label}; touch(); }}, label + ' ', h('b', v.toLocaleString('ja-JP') + '点'), more);
-    const q50 = (r.quantiles || []).find(q => q.p === 0.5);
-    return h('div.ttbox', {class: old ? 'old' : ''},
-      h('div.row', {},
-        pt('確率100%で届く最大', r.sure, '引きが一番悪くても届く点'),
-        pt('50%で届く最大', q50?.score ?? null, '達成率50%以上で届く一番高い点'),
-        pt('最大', r.max, '一番よい引きのときに取れる点'),
-        h('span.hint', `${(r.ms / 1000).toFixed(1)}秒`, r.exact ? null : qtip('「以上」は、計算を絞った範囲での値という意味です（本当はこれより高いことがあります）'))),
-      old && h('p.hint', '局面を変えました。この値は前の局面のものです。'),
-      // 押して目標点に入れた値が、計算を絞った範囲の値（厳密でない）なら、その旨を出す。目標点を手で書き換えたら消える
-      TT.picked && !TT.picked.exact && p.target === TT.picked.v && h('p.warnline.ttpicked', `目標点 ${TT.picked.v.toLocaleString('ja-JP')}点（${TT.picked.label}）は、計算を絞った範囲での値です。本当の値はこれより高いことがあります。`),
-      (r.curve || []).length > 1 && h('details.ttcurve', {open: TT.showCurve, ontoggle: e => { TT.showCurve = e.target.open; }}, h('summary', '目標点ごとの、届く確率（最大）'),
-        h('table.tbl.narrow', {}, h('thead', h('tr', h('th', '目標点'), h('th', '届く確率'))),
-          h('tbody', r.curve.map((c, i) => { const nx = r.curve[i + 1]; return h('tr', h('td.n', nx ? `${c.score.toLocaleString('ja-JP')}〜${(nx.score - 1).toLocaleString('ja-JP')}` : `${c.score.toLocaleString('ja-JP')}〜`), h('td.n', (Math.round(c.p * 10000) / 100) + '%' + (r.exact ? '' : ' 以上'))); })))));
-  }
 
   // P アイテムの入力欄：デッキの P アイテムのうち、入力の要るもの（発動済みの回数・カウンタ。エンジンの pItemInputs）と、試作・未対応の注記があるものだけ出す
   function itemBox() {

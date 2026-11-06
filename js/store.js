@@ -22,6 +22,7 @@ export const defaultParams = () => ({
   gameDeckCount: null,       // ゲーム画面の山札の枚数（入れると照合する）
   nullifyCostCards: 0,
   fullPowerCharge: null,     // 全力値（全力値を使う札があるときだけ欄を出す。空欄は 0）
+  saveDrinks: false,         // ドリンクを温存する（HIF の1回目の試験）。既定は温存しない（1.11.0、利用者の決定）
   cumulativeFullPowerCharge: null,   // 累計の全力値（空欄なら計算の部品が仮に 7）       // コストを0にする残り回数（全身全霊+ など。体力が減ったら発動する P アイテムを持つときだけ使う）
 });
 
@@ -39,15 +40,27 @@ S.calcSettings ??= null;
 S.settings = {...defaultSettings(), ...S.settings, extras: {...defaultSettings().extras, ...(S.settings?.extras || {})}};
 S.ui ||= {tab: 'deck'};
 S.history ||= [];
+migrateSave(S);
+
+// 1.10.0 までの局面の読み替え（1回だけ）：前は「温存する」が既定で、lastExam（最後の試験）で温存しなかった。
+// saveDrinks のない局面は、lastExam が true なら温存しない、そうでなければ温存する（前と同じ答えになる）
+function migrateSave(s) {
+  const fix = P => { const q = P?.params; if (!q || 'saveDrinks' in q) return; q.saveDrinks = !q.lastExam; delete q.lastExam; };
+  fix(s.phase); for (const h of s.history || []) fix(h.phase); fix(s.result?.phase);
+}
 
 let t = null;
 // 保存。方策の木が大きすぎて入らないときは、木を除いて保存する（結果の数値は残る。プレイの案内は計算し直しが要る）
 export function save() { clearTimeout(t); t = setTimeout(() => {
+  // 答え（主・95% の両方）の方策の木が大きいときは、木を除いて保存する。それでも入らなければ、前の局面の記録を減らす
+  const slim = r => r && {...r, tree: null, treeDropped: !!(r.tree || r.treeDropped), alt: r.alt && {...r.alt, tree: null, treeDropped: !!(r.alt.tree || r.alt.treeDropped)}};
   let s = JSON.stringify(S);
-  if (s.length > 3e6 && S.result?.tree) s = JSON.stringify({...S, result: {...S.result, tree: null, treeDropped: true}});
-  try { localStorage.setItem(KEY, s); } catch {}
+  if (s.length > 3e6 && S.result) s = JSON.stringify({...S, result: slim(S.result)});
+  try { localStorage.setItem(KEY, s); } catch {
+    try { localStorage.setItem(KEY, JSON.stringify({...S, result: slim(S.result), history: S.history.slice(0, 5)})); } catch {}
+  }
 }, 150); }
 export const deck = () => S.decks.find(d => d.id === S.deckId) || null;
-export function replaceAll(obj) { for (const k of Object.keys(S)) delete S[k]; Object.assign(S, obj); S.settings = {...defaultSettings(), ...S.settings}; S.ui ||= {tab: 'deck'}; S.history ||= []; S.calcSettings ??= null; save(); }
+export function replaceAll(obj) { for (const k of Object.keys(S)) delete S[k]; Object.assign(S, obj); S.settings = {...defaultSettings(), ...S.settings}; S.ui ||= {tab: 'deck'}; S.history ||= []; S.calcSettings ??= null; migrateSave(S); save(); }
 // 書き出す中身（保存の形の版つき）
 export const exportData = () => ({format: 'aegis-user-data', version: 1, exported: new Date().toISOString().slice(0, 10), ...S});

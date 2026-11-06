@@ -309,14 +309,6 @@ button.sec:hover:not(:disabled) { background: var(--acc2); }
 .qtip { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 4px; border-radius: 50%; border: 1px solid var(--line2); color: var(--sub); font-size: 11px; font-weight: 700; cursor: help; vertical-align: 1px; }
 .qtip:hover, .qtip:focus { background: var(--acc2); color: var(--acc); border-color: var(--acc); outline: none; }
 /* この局面で取れる点 */
-.ttbtn { align-self: flex-end; }
-.ttbox { margin: 4px 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
-.ttbox.old { opacity: .6; }
-.ttbox .row { gap: 8px; align-items: center; flex-wrap: wrap; }
-button.ttv { background: var(--panel); }
-button.ttv b { font-size: 16px; }
-.ttv.none { color: var(--sub); font-size: 14px; padding: 4px 8px; }
-.ttcurve summary { cursor: pointer; font-size: 13px; color: var(--sub); margin-top: 6px; }
 /* もう一方の答え（達成率最大 ⇔ 95%で良ければ） */
 .altans { margin: 10px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 .altans .altline { flex: 1 1 260px; }
@@ -324,3 +316,4 @@ button.ttv b { font-size: 16px; }
 /* 答えの見出しの小さな印（即答・前の計算を使用 など） */
 .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
 .tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--infobg); color: var(--info); cursor: help; }
+.lastexam { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 2px 0 8px; }
