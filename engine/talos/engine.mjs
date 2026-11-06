@@ -663,7 +663,7 @@ export function createEngine(data,setup,options={}){
   }
   // ドリンク：残り行動は減らない。効果を実行し、残り行動が0なら終わり
   function useDrink(s,a){
-    const dr=data.drinks.get(a.id);const ctx={used:-1,phase:'drink',parent:null,select:a.select||null,inCard:false};
+    const dr=data.drinks.get(a.id);const ctx={used:-1,phase:'drink',parent:null,select:a.select||null,noSelect:!!a.noSelect,inCard:false};
     let cur=each(one(s),x=>{const t=copy(x);t.drinks=t.drinks.slice();t.drinks.splice(t.drinks.indexOf(a.id),1);return one(t);});
     cur=each(cur,x=>runItems(one(x),dr.actions,x,ctx));
     return each(cur,x=>x.uses<1&&!x.done?endTurn(one(x)):one(x));
@@ -692,7 +692,8 @@ export function createEngine(data,setup,options={}){
         else out.push({type:'card',ty,id:c.id,name:c.name});});
       const capped=cfg.drinkCap!==null&&cfg.drinkBase-s.drinks.length>=cfg.drinkCap;
       if(!capped){let prev=null;for(const id of s.drinks){if(id===prev)continue;prev=id;const dr=data.drinks.get(id);const sel=findSelect(dr.actions,dr.name);
-        if(sel){for(const x of selectable(s,sel.target,{used:-1}))out.push({type:'drink',id,name:dr.name,select:x});}
+        // 選べる札がないとき（山札・捨て札が空のほっと緑茶など）も使える：何も保留せず残りの効果だけ（gakumas-engine の holdSelectedByTarget と同じ。項目21、2026-11-06、利用者の決定で封印を解いて直した）
+        if(sel){const opts=selectable(s,sel.target,{used:-1});if(opts.length)for(const x of opts)out.push({type:'drink',id,name:dr.name,select:x});else out.push({type:'drink',id,name:dr.name,noSelect:true});}
         else out.push({type:'drink',id,name:dr.name});}}
     }
     if(hasEndOfTurn(s))out.push({type:'endTurn',name:'ターン終了'});

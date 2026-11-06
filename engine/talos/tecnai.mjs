@@ -750,7 +750,7 @@ export function createEngine(data,setup,options={}){
     return trigger(cur,'endOfTurn',{used:-1,phase:null,parent:null});
   }
   function useDrink(s,a){
-    const dr=data.drinks.get(a.id);const ctx={used:-1,phase:'drink',parent:null,select:a.select||null,inCard:false};
+    const dr=data.drinks.get(a.id);const ctx={used:-1,phase:'drink',parent:null,select:a.select||null,noSelect:!!a.noSelect,inCard:false};
     const i=s.drinks.indexOf(C(BASE+a.id));s.drinks=s.drinks.slice(0,i)+s.drinks.slice(i+1);
     const cur=runItems(one(s),dr.actions,needsSnap(dr.actions)?clone(s):s,ctx);
     return each(cur,x=>x.uses<1&&!x.done?endTurn(one(x)):one(x));
@@ -783,7 +783,8 @@ export function createEngine(data,setup,options={}){
       const capped=cfg.drinkCap!==null&&cfg.drinkBase-s.drinks.length>=cfg.drinkCap;
       if(!capped){let prev=-1;for(let i=0;i<s.drinks.length;i++){const id=s.drinks.charCodeAt(i)-BASE;if(id===prev)continue;prev=id;const dr=data.drinks.get(id);
         let sel=drinkSel.get(id);if(sel===undefined){sel=findSelect(dr.actions,dr.name);drinkSel.set(id,sel);}
-        if(sel){for(const x of selectable(s,sel.target))out.push({type:'drink',id,name:dr.name,select:x});}
+        // 選べる札がないとき（山札・捨て札が空のほっと緑茶など）も使える：何も保留せず残りの効果だけ（gakumas-engine の holdSelectedByTarget と同じ。項目21、2026-11-06）
+        if(sel){const opts=selectable(s,sel.target);if(opts.length)for(const x of opts)out.push({type:'drink',id,name:dr.name,select:x});else out.push({type:'drink',id,name:dr.name,noSelect:true});}
         else out.push({type:'drink',id,name:dr.name});}}
     }
     if(hasEnd(s.effs)||hasEnd(s.ce))out.push({type:'endTurn',name:'ターン終了'});

@@ -263,7 +263,7 @@ function actLabel(model, a) {
   const E = model.engine;
   const sel = a.select ? `（${E.types[a.select.ty]?.card.name ?? '札'} を${{hand: '手札', deck: '山札', discard: '捨て札'}[a.select.from] || ''}から選ぶ）` : '';
   if (a.type === 'card') return `${a.name}${sel}`;   // 札・ドリンクは名前だけ（利用者の決定。「を使う」「を飲む」は付けない）
-  if (a.type === 'drink') return `${a.name}${sel}`;
+  if (a.type === 'drink') return `${a.name}${sel}${a.noSelect ? '（保留する札なし）' : ''}`;   // 選べる札がないときも飲める（計算の部品の項目21、2ca0324）
   if (a.type === 'endTurn') return 'ターン終了';
   return a.name || a.type;
 }
