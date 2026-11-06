@@ -89,7 +89,7 @@ function nextView(R, interim) {
   const b = R.best;
   return h('div.nextv', {},
     h('div.nmain', {}, R.nextIcon ? pic(R.nextIcon.kind, R.nextIcon.id, R.next, 64) : null, h('div.ntext', R.next || '—')),
-    b && R.objective === 'beyondGoal' && h('div.kpis', {}, kpi('達成率', b.pText, '', '目標点に届く確率'), kpi('届いたときの平均点', b.evIfReachedNum == null ? (b.pNum === 0 ? '届かない' : '—') : fmt(Math.round(b.evIfReachedNum)), b.evIfReachedNum == null ? '' : '点', '目標点に届いた場合の、最終点の平均（届かない場合は含めない）。手は、届かない場合も含めた平均で選んでいます'), kpi('最低最終点', b.floorNum == null ? '—' : fmt(Math.round(b.floorNum)), '点', '一番悪い引きのときの最終点')),
+    b && R.objective === 'beyondGoal' && h('div.kpis', {}, kpi('達成率', b.pText, '', '目標点に届く確率'), kpi('届いたときの平均点', b.evIfReachedNum == null ? (b.pNum === 0 ? '届かない' : '—') : fmt(Math.round(b.evIfReachedNum)), b.evIfReachedNum == null ? '' : '点', '目標点に届いた場合の、最終点の平均（届かない場合は含めない）。手は、届かない場合も含めた平均で選んでいます'), kpi('最低最終点', b.floorNum == null || b.pNum === 0 ? '—' : fmt(Math.round(b.floorNum)), b.floorNum == null || b.pNum === 0 ? '' : '点', '一番悪い引きのときの最終点')),
     b && R.objective === 'beyondGoal' && h('p.hint', (b.evIfReachedNum == null && b.pNum === 0 && b.evNum != null ? `届かない場合の平均 ${fmt(Math.round(b.evNum))}点（参考）・` : '') + `ドリンク ${num1(b.dNum)}本・手数 ${num1(b.aNum)}回（比べていません）`),
     b && R.objective !== 'beyondGoal' && h('div.kpis', {}, kpi('達成率', b.pText, '', '目標点に届く確率'), kpi('ドリンク', num1(b.dNum), '本', 'このあと使うドリンクの本数の見込み（引く札によって変わる数の平均）'), kpi('手数', num1(b.aNum), '回', 'このあと札やドリンクを使う回数の見込み（平均）')));
 }
