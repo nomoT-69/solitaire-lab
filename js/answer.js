@@ -33,7 +33,8 @@ function recompute(over = {}, opt = {}) {
 // 局面が、答えを出したときの局面と同じか（違えば、答えは古い）
 const SAME_KEYS = ['zones', 'held', 'extra', 'assume', 'drinksHeld', 'itemState', 'registered', 'params'];
 const sig = P => JSON.stringify(SAME_KEYS.map(k => P?.[k] ?? null));
-export const isStale = () => !!(S.result?.phase && S.phase && sig(S.result.phase) !== sig(S.phase));
+// 札の HIF などデッキを変えたとき（deckChanged）も古い答え
+export const isStale = () => !!(S.result?.phase && S.phase && (sig(S.result.phase) !== sig(S.phase) || S.result.deckChanged));
 
 // 方策の木をたどる（S.play.steps）
 function walk(tree, steps) {
@@ -60,6 +61,10 @@ function gainOf(tree, node) {
   const same = f => kids.every(b => f(b) === f(kids[0]));
   if (same(b => b.heat) && kids[0].heat !== a.heat) parts.push(`熱意 ${fmt(a.heat)} → ${fmt(kids[0].heat)}`);
   if (same(b => b.extra) && kids[0].extra !== a.extra) parts.push(`熱意追加 ${fmt(a.extra)} → ${fmt(kids[0].extra)}`);
+  // 1発の値×回数（計算の部品の explain）。どの引きでも同じなら「23,370 × 5回 ＝ +116,850」
+  const hs = node.edges.map(e => e.hits ? e.hits.map(x => x.times > 1 ? `${fmt(x.v)} × ${x.times}回` : fmt(x.v)).join(' ＋ ') : null);
+  const plain = node.edges[0].hits?.length === 1 && node.edges[0].hits[0].times === 1;   // 1発だけなら「+48」のまま
+  if (!plain && hs[0] && hs.every(x => x === hs[0]) && lo === hi && lo > 0) return {text: `使うとスコア ${hs[0]} ＝ +${fmt(lo)}`, sub: `（このターンの合計 ${fmt(tlo)}${parts.length ? '・' + parts.join('・') : ''}）`, short: `${hs[0]} ＝ +${fmt(lo)}点`};
   return {text: `使うとスコア ${sc}`, sub: `（このターンの合計 ${tlo === thi ? fmt(tlo) : fmt(tlo) + '〜' + fmt(thi)}${parts.length ? '・' + parts.join('・') : ''}）`, short: `${sc}点`};
 }
 

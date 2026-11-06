@@ -33,13 +33,13 @@ export function renderDeck(root, rerender) {
   const cardEdit = (e, entry) => {
     const c = D.cardById.get(entry.id);
     const items = [];
-    if (c.plusId || c.upgraded) items.push({label: c.upgraded ? '通常にする' : '＋にする', key: '+', onclick: () => { entry.id = c.upgraded ? c.baseId : c.plusId; entry.c11n = {}; touch(); rerender(); }});
-    if (hifOk(S.calcSettings, c.baseId) || entry.hif) items.push({label: entry.hif ? 'HIF を外す' : 'HIF を付ける', key: 'h', onclick: () => { entry.hif = !entry.hif; touch(); rerender(); }});
+    if (c.plusId || c.upgraded) items.push({label: c.upgraded ? '通常にする' : '＋にする', key: '+', onclick: () => { entry.id = c.upgraded ? c.baseId : c.plusId; entry.c11n = {}; if (S.result && S.result.deckId === dk.id) S.result.deckChanged = true; touch(); rerender(); }});
+    if (hifOk(S.calcSettings, c.baseId) || entry.hif) items.push({label: entry.hif ? 'HIF を外す' : 'HIF を付ける', key: 'h', onclick: () => { entry.hif = !entry.hif; if (S.result && S.result.deckId === dk.id) S.result.deckChanged = true; touch(); rerender(); }});
     for (const cid of c.custs) {
       const cu = D.custs.get(cid); if (!cu) continue;
       const cur = entry.c11n?.[cid] || 0;
       items.push(h('div.pop-c', {}, h('span', 'カスタマイズ：' + cu.name),
-        h('select', {onchange: ev => { entry.c11n = {...entry.c11n, [cid]: Number(ev.target.value)}; touch(); rerender(); }},
+        h('select', {onchange: ev => { entry.c11n = {...entry.c11n, [cid]: Number(ev.target.value)}; if (S.result && S.result.deckId === dk.id) S.result.deckChanged = true; touch(); rerender(); }},
           Array.from({length: cu.max + 1}, (_, L) => h('option', {value: L, selected: L === cur}, L ? '段階' + L : 'なし')))));
     }
     items.push({label: '1枚ふやす', key: 'c', onclick: () => { dk.cards.push({...structuredClone(entry), uid: uid()}); touch(); rerender(); }});

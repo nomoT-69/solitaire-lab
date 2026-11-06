@@ -120,7 +120,7 @@ export function solveBeyondGoal(model,opts={}){
   if(ex.status==='complete')return {...best,trials};
   trim();
   for(const cap of opts.caps??[20000,100000,300000]){if(left()<=0)break;
-    const r=solveBeyondGoal1(model,{maxOps:opts.maxOps,layerCap:cap,capScore:heatCapScore(model,opts.capHeatLambda??8),maxEstMiB:opts.maxEstMiB,maxHeapMiB:opts.maxHeapMiB,maxMs:Math.max(1,left())});
+    const r=solveBeyondGoal1(model,{maxOps:opts.maxOps,layerCap:cap,capScore:heatCapScore(model,opts.capHeatLambda??8,1,opts.heatOpts||{}),maxEstMiB:opts.maxEstMiB,maxHeapMiB:opts.maxHeapMiB,maxMs:Math.max(1,left())});
     offer(r,'Tomahawk（届いた先まで、層の上限 '+cap+'・熱意の見込み）');trim();
     if(r.status!=='complete')break;}
   if(!best)return {status:'incomplete',reason:'TIME_LIMIT',kind:'incomplete',kindLabel:'未完了',trials,stats:{elapsedMs:Date.now()-started}};

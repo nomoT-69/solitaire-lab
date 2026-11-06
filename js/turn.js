@@ -1,6 +1,6 @@
 // ソリティアの画面（毎ターン使う画面）：左に局面（上部の数値の欄、手札、置き場）、右に答え（計算・次の手・プレイの案内）。
 // 札は押して置き場を選ぶ（キー 1:手札 2:保留 3:捨て札 4:除外 0:山札）か、置き場へドラッグする。山札＝デッキ全体−ほかの置き場（自動）。
-import {D, search, itemInputs, staminaTriggered, hifSharedLimit} from './data.js';
+import {D, search, itemInputs, staminaTriggered, hifSharedLimit, hifOk} from './data.js';
 import {firedOf} from './setup.js';
 import {S, save, uid, deck, newPhase, STANCES} from './store.js';
 import {h, pic, cardTile, popover, num, sel, toast, qtip} from './ui.js';
@@ -40,6 +40,18 @@ export function renderTurn(root, rerender) {
   const cardMenu = (e, en) => {
     const c = D.cardById.get(en.id); const z = zoneOf(P, en.uid);
     const items = ZONES.map(([k, n, key]) => ({label: n.replace('（自動）', '') + 'へ', key, disabled: k === z, onclick: () => move(en.uid, k)}));
+    // HIF のつけ外し（デッキの画面と同じ。デッキの札そのものを変える。1.14.3、利用者の要望）
+    const changed = () => { dk.updated = Date.now(); if (S.result) S.result.deckChanged = true; };
+    if (c && (hifOk(S.calcSettings, c.baseId) || en.hif)) items.push({label: en.hif ? 'HIF を外す' : 'HIF を付ける', key: 'h', onclick: () => { en.hif = !en.hif; changed(); touch(); }});
+    // 通常／＋、カスタマイズ（デッキの画面と同じ。デッキの札そのものを変える。1.14.3、利用者の要望）
+    if (c && (c.plusId || c.upgraded)) items.push({label: c.upgraded ? '通常にする' : '＋にする', key: '+', onclick: () => { en.id = c.upgraded ? c.baseId : c.plusId; en.c11n = {}; changed(); touch(); }});
+    for (const cid of c?.custs || []) {
+      const cu = D.custs.get(cid); if (!cu) continue;
+      const cur = en.c11n?.[cid] || 0;
+      items.push(h('div.pop-c', {}, h('span', 'カスタマイズ：' + cu.name),
+        h('select', {onchange: ev => { en.c11n = {...en.c11n, [cid]: Number(ev.target.value)}; changed(); save(); }},
+          Array.from({length: cu.max + 1}, (_, L) => h('option', {value: L, selected: L === cur}, L ? '段階' + L : 'なし')))));
+    }
     const g = growthOf(P, en);
     if (g) items.push(h('div.pop-c', {}, h('span', '自己成長（受けた回数）'),
       h('select', {onchange: ev => { setAssume(P, en.uid, 'grown', Number(ev.target.value)); save(); }},

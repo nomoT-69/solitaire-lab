@@ -56,14 +56,18 @@ const growthLimitOf=(opts,maxStates)=>{if(opts.growthStop===false)return undefin
 // α の前線の間引き（G2 2026-11-05、利用者の決定。DESIGN 22.26）：α を決めた比較の層の上限の段（暫定）は、前線を ε（既定 1e-3、opts.capFrontierEps。0 で間引かない）で間引く。
 // 間引いた段の答えは近似（最適との差は未証明）で、上限に当たらずに解き終えても最適（証明済み）にはしない（Tomahawk の optimalityProven が ε も見る。外部レビュー2の項目12）。
 // 残る点は実際の方策の正確な値。各局面で達成率が最大の点は必ず残るので、α=100% の答えは変わらない。届く最大の基準（辞書式）には関係しない。厳密に解く段では使わない
-const capOpts=(model,opts,st)=>({layerCap:st.cap,capScore:st.heat?heatCapScore(model,opts.capHeatLambda??8):undefined,
+const capOpts=(model,opts,st)=>({layerCap:st.cap,capScore:st.heat?heatCapScore(model,opts.capHeatLambda??8,1,opts.heatOpts||{}):undefined,
   ...(opts.criterion!=='max'&&(opts.capFrontierEps??1e-3)?{frontierEps:opts.capFrontierEps??1e-3}:{})});
 // α のときの見込みの段：前は「達成率最大」で解いた（α の前線が重かったため。22.4）。間引きで軽くなったので α の前線で解く。opts.alphaHeatMax:true で前の動き
 const heatAsMax=(opts,st,crit)=>st.heat&&!crit&&opts.alphaHeatMax===true;
 // opts.beamHeat（G2 2026-11-04、設計案の検証2。利用者の決定で既定 8、0 で前の順）：暫定の答えを作る Javelin の上位1〜3手の探索で、手の順に熱意の見込み（λ）を使う。厳密な Javelin は今の順のまま
 // opts.beamMaxMemo（既定 10万）：上位1〜3手の探索で覚える局面の数の上限。1局面 4〜22KB なので、ブラウザ（メモリを測れない）でも約0.4〜2GB で止まる（上位1手は1〜3万局面で終わる）
 const capLabel=st=>st.cap+(st.heat?'・熱意の見込み':'');
+// 見込みの既定（G2 2026-11-06、利用者の決定「重み1を既定に」。DESIGN 22.43）：保留した有効な札（眠気以外）の分を見込みから引く（heatOpts.hold=1）。
+// 層の上限の段・Javelin の手の順・点数を伸ばすの段に効く。opts.heatOpts:{} で前の見込み
+const withHeatDefault=opts=>opts.heatOpts===undefined?{...opts,heatOpts:{hold:1}}:opts;
 export function solveAegis(model,opts={}){
+  opts=withHeatDefault(opts);
   // 最後の試験の「点数を伸ばす」（opts.beyondGoal、G2 2026-11-06、利用者の決定。GUI のチェック。既定は「目標点まででよい」＝今の計算）：
   // 届く確率 P を最大に、同じなら届いた先も含めた期待最終点を最大に（talos/beyond-goal.mjs）。order・criterion・alpha・alsoMax は使わない
   if(opts.beyondGoal)return solveBeyondGoal(model,opts);
@@ -130,6 +134,7 @@ export function solveAegis(model,opts={}){
 // 状態数（maxStates、累計）やメモリ（opts.maxHeapMiB）の上限を超えたら、厳密な計算の続きは捨てる（メモリを返す）。
 // 続けても良くならないときは resumable:false と、その理由（resumeReason）を返す。
 export function createAegisJob(model,opts={}){
+  opts=withHeatDefault(opts);
   // 点数を伸ばす（opts.beyondGoal）：続きからの計算はしない（run のたびに予算内で解く）
   if(opts.beyondGoal)return {run:(o={})=>solveBeyondGoal(model,{...opts,...o}),follow:()=>null,retarget:()=>null,dispose(){},get state(){return {calls:0,final:false,canFollow:false};}};
   const crit=opts.criterion==='max';const canJavelin=!opts.noJavelin&&javelinSupports(opts).ok;

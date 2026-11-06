@@ -67,7 +67,7 @@ class St{
   constructor(o){this.hand=o.hand;this.disc=o.disc;this.rem=o.rem;this.held=o.held;this.drinks=o.drinks;this.deck=o.deck;this.effs=o.effs;this.ce=o.ce;
     this.uses=o.uses;this.st=o.st;this.prev=o.prev;this.heat=o.heat;this.extra=o.extra;this.factor=o.factor;this.bonus=o.bonus;this.strB=o.strB;
     this.pT=o.pT;this.sT=o.sT;this.lT=o.lT;this.dirT=o.dirT;this.nc=o.nc??0;this.nco=o.nco??0;this.cm=o.cm??0;this.fp=o.fp??0;this.cfp=o.cfp??0;this.fpb=o.fpb??0;this.cardsUsed=o.cardsUsed;this.turnUsed=o.turnUsed;this.done=o.done;this.em=o.em;this.sTimes=o.sTimes;this.usedTy=o.usedTy;
-    this.score=o.score;this.key=null;}
+    this.score=o.score;this.key=null;this.hits=o.hits;}   // hits：表示用の内訳（explain のときだけ使う。ふだんは undefined）
 }
 const clone=s=>new St(s);
 
@@ -490,13 +490,15 @@ export function createEngine(data,setup,options={}){
   const one=s=>[{p:ONE,s}];
 
   // ---- 熱意・スコア（engine.mjs と同じ計算の順） ----
-  function addEnthusiasm(t,v){t.heat+=Math.ceil(((v+t.extra)*t.factor)/100-1e-9);}
+  // TRACE（explain のときだけ true）：スコア1発ごとの値・熱意の増分を状態の hits に記録する（書き換えのたびに新しい配列。枝分かれしても混ざらない）
+  let TRACE=false;
+  function addEnthusiasm(t,v){const d=Math.ceil(((v+t.extra)*t.factor)/100-1e-9);t.heat+=d;if(TRACE)t.hits=[...(t.hits||[]),{heat:d}];}
   function addScore(t,v){
     if(!(v>0))return;
     const a=ceilS(v+t.heat*t.em);
     const mult=STANCE_MULT[t.st]+(isStr(t.st)?t.strB/100:0);
     const b=ceilS(a*mult*(1+t.bonus/100));
-    t.score+=ceilS(b*cfg.trial);
+    const g=ceilS(b*cfg.trial);t.score+=g;if(TRACE)t.hits=[...(t.hits||[]),{score:g}];
   }
 
   // ---- 指針（#7） ----
@@ -809,6 +811,13 @@ export function createEngine(data,setup,options={}){
     return {branches:out};
   }
   const withScore=(s,x)=>{const t=clone(s);t.score=x;t.key=s.key;return t;};
+  // 表示用（G2 2026-11-06、利用者の要望「1発分のスコア × 回数」。GUI のプレイの案内）：手 a を計算し直し、枝ごとにスコアの内訳を返す。計算の本体の速さには影響しない。
+  // 返り値 {branches:[{p, s, scoreGain, hits:[{v, times}], heatGain, heatHits:[{v, times}]}]}。hits は入った順に、同じ値が続く分をまとめる（例 [{v:1234,times:3}]）。
+  // scoreGain＝hits の合計＝その手の前後の得点の差。heatGain は熱意の増分の合計（指針の変更・札の熱意など。熱意を直接減らす効果は含まない）
+  function explain(s0,a){const s=clone(s0);s.hits=undefined;TRACE=true;let r;try{r=transition(s,a);}finally{TRACE=false;}
+    const runs=xs=>{const out=[];for(const v of xs){const o=out[out.length-1];if(o&&o.v===v)o.times++;else out.push({v,times:1});}return out;};
+    return {branches:r.branches.map(b=>{const h=b.s.hits||[];b.s.hits=undefined;const sc=h.filter(x=>x.score!==undefined).map(x=>x.score),ht=h.filter(x=>x.heat!==undefined).map(x=>x.heat);
+      return {p:b.p,s:b.s,scoreGain:b.s.score-s0.score,hits:runs(sc),heatGain:ht.reduce((x,y)=>x+y,0),heatHits:runs(ht)};})};}
 
   const root=initial();
   const name=ty=>types[ty].card.name+(types[ty].g.score||types[ty].g.scoreTimes?'〔成長 '+types[ty].g.score+'/'+types[ty].g.scoreTimes+'〕':'');
@@ -873,7 +882,7 @@ export function createEngine(data,setup,options={}){
   function trimCaches(){for(const B of beliefs){B.draw=null;B.many=null;B.hold=null;B.ins=new Map();}PH_CACHE.clear();beliefCanonCache.clear();}
   // 支配のキー：熱意を除いたキー（heatMono のときだけ。熱意が多いほど良い）
   const domKey=s=>{const h=s.heat;s.heat=0;const k=key(s);s.heat=h;return k;};
-  return {root,choices,transition,key:s=>s.key,types,cfg,defs,withScore,deckOrders,beliefs,canon,fromCanon,canonAct,trimCaches,
+  return {root,choices,transition,explain,key:s=>s.key,types,cfg,defs,withScore,deckOrders,beliefs,canon,fromCanon,canonAct,trimCaches,
     heatMonotone:()=>heatMono,domKey,domVal:s=>s.heat,
     effsOf:s=>effTab[s.effs],ceOf:s=>effTab[s.ce],extraOf:s=>[s.strB,s.cardsUsed,s.turnUsed],isDead:deadRec,stats:()=>({beliefs:beliefs.length,effLists:effTab.length,types:types.length,keyFields:Object.keys(K).filter(f=>K[f])}),
     describe:s=>({hand:ms(s.hand),discard:ms(s.disc),removed:ms(s.rem),held:[...s.held].map(c=>name(c.charCodeAt(0)-BASE)),

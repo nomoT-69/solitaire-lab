@@ -364,6 +364,9 @@ function playTree(model, pol, s0 = model.root, id0 = pol.root, base = []) {
     const br = model.branches(s, act);
     if (br.length !== n.edges.length) throw Error('方策の木の分かれ方が合いません');
     const me = {act: actLabel(model, n.choice), icon: actIcon(n.choice), kind: n.choice.type, choice: n.choice, ck: choiceKey(E, n.choice), sameEval: n.sameEval ?? null, edges: [], st: stOf(E, s)};
+    // スコアの内訳（1発の値×回数。計算の部品の explain、33a1526）。分かれは中身（canon）で対応させる（model の分かれは並べ替えていることがある）
+    let ex = null;
+    if (typeof E.explain === 'function') { try { ex = new Map(E.explain(s, act.raw ?? act).branches.map(x => [E.canon(x.s) + '|' + x.s.score, x])); } catch { ex = null; } }
     const idx = nodes.length; nodes.push(me);
     let p = 0, d = n.choice.type === 'drink' ? 1 : 0, a = n.choice.type === 'skip' ? 0 : 1;
     br.forEach((b, i) => {
@@ -374,7 +377,8 @@ function playTree(model, pol, s0 = model.root, id0 = pol.root, base = []) {
       // 継続効果（夏夜など）：カウンタの動きと、その1手で出したスコア
       const before = regsOf(E, s), after = regsOf(E, b.s);
       const regs = before.map(r => { const a2 = after.find(x => x.path === r.path); return {id: r.id, from: r.c, to: a2 ? a2.c : null, gain: regGain(model, s, n.choice, b.s, r)}; });
-      me.edges.push({p: b.pFloat, pText: Q.str(b.p), drawn, hand, exchanged, regs, next});
+      const xb = ex?.get(E.canon(b.s) + '|' + b.s.score);
+      me.edges.push({p: b.pFloat, pText: Q.str(b.p), drawn, hand, exchanged, regs, next, hits: xb?.hits || null, heatHits: xb?.heatHits || null});
     });
     Object.assign(me, {p, d, a});
     return idx;

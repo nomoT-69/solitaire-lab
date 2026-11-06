@@ -60,7 +60,7 @@ export function solveJavelin(model,opts={}){
   const PF=opts.profile?{trMs:0,optMs:0,optCalls:0}:null;const now=()=>performance.now();
   // opts.orderHeat（試作・測定用、G2 2026-11-04、設計案の検証2）：手を試す順を「その場の期待得点＋子の熱意の見込み」（heatCapScore、λ=opts.orderHeat）の大きい順にする。
   // 順番だけに使い、省く判定（正しい見積もり）は変えないので、答えは同じ
-  const HS=opts.orderHeat?heatCapScore(model,opts.orderHeat):null;
+  const HS=opts.orderHeat?heatCapScore(model,opts.orderHeat,1,opts.heatOpts||{}):null;   // opts.heatOpts（試作）：見込みの追加の項（例 {hold}）
   function expand(e){
     if(e.acts)return e.acts;expanded++;
     const cs=choicesOf(e.s);
