@@ -323,3 +323,4 @@ dialog.restore::backdrop { background: rgba(0,0,0,.35); }
 dialog.restore h3 { margin: 0 0 6px; }
 .restoreta { width: 100%; box-sizing: border-box; font: 12px/1.4 ui-monospace, monospace; margin: 6px 0; }
 dialog.restore .row { gap: 8px; justify-content: flex-end; }
+.tipbox { position: fixed; z-index: 1000; max-width: 340px; background: var(--ink); color: var(--panel); font-size: 13px; line-height: 1.5; padding: 6px 10px; border-radius: 8px; box-shadow: var(--shadow); pointer-events: none; white-space: pre-wrap; }

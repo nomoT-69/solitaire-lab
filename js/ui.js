@@ -92,4 +92,22 @@ export const sel = (label, value, options, onchange) =>
 export const fmt = n => n === null || n === undefined ? '—' : Number(n).toLocaleString('ja-JP');
 
 // 入力の欄の横の「？」：触れる（マウスを乗せる・キーで選ぶ）と、何を入れるかが出る
-export const qtip = text => h('span.qtip', {title: text, tabIndex: 0, 'aria-label': text, role: 'note'}, '?');
+// 「?」の説明：指を置く・押す・Tab で選ぶと、すぐ近くに出す（ブラウザの title の吹き出しは出るのが遅く、出ないこともあるので使わない。1.13.1、利用者の指摘）
+export const qtip = text => h('span.qtip', {'data-tip': text, tabIndex: 0, 'aria-label': text, role: 'note'}, '?');
+let tipEl = null, tipFor = null;
+function showTip(el) {
+  if (tipFor === el) return; hideTip();
+  tipEl = document.createElement('div'); tipEl.className = 'tipbox'; tipEl.textContent = el.dataset.tip; document.body.append(tipEl); tipFor = el;
+  const r = el.getBoundingClientRect(), w = tipEl.offsetWidth, hgt = tipEl.offsetHeight;
+  let x = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), innerWidth - w - 8), y = r.bottom + 6;
+  if (y + hgt > innerHeight - 8) y = r.top - hgt - 6;
+  tipEl.style.left = x + 'px'; tipEl.style.top = y + 'px';
+}
+function hideTip() { tipEl?.remove(); tipEl = null; tipFor = null; }
+const tipOf = e => e.target?.closest?.('.qtip[data-tip]');
+document.addEventListener('mouseover', e => { const el = tipOf(e); if (el) showTip(el); });
+document.addEventListener('mouseout', e => { const el = tipOf(e); if (el && !el.contains(e.relatedTarget)) hideTip(); });
+document.addEventListener('focusin', e => { const el = tipOf(e); if (el) showTip(el); });
+document.addEventListener('focusout', e => { if (tipOf(e)) hideTip(); });
+document.addEventListener('click', e => { const el = tipOf(e); if (el) { e.stopPropagation(); showTip(el); } else hideTip(); }, true);
+document.addEventListener('scroll', hideTip, true);
