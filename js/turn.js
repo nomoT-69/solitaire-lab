@@ -100,11 +100,11 @@ export function renderTurn(root, rerender) {
       stepper('行動回数', 'cardUses', {min: 1, max: 20, tip: 'このターンに、まだ札を使える回数（ゲームの画面のスキルカード使用数）'}),
       field('目標点', 'target', {width: 9, cls: 'big', tip: 'このターンで届かせたい点数。プレイの途中から作った局面では、それまでに入った点を引いた値'})),
     // ドリンクを温存する（HIF の1回目の試験）。既定は温存しない（届く確率 → 手数）。1.11.0、利用者の決定
-    h('div.lastexam', {}, h('label.f', {}, h('input', {type: 'checkbox', checked: !!p.saveDrinks && !p.beyondGoal, onchange: e => { p.saveDrinks = e.target.checked; if (e.target.checked) p.beyondGoal = false; touch(); }}), 'ドリンクを温存する（HIF の1回目の試験）'),
+    h('div.lastexam', {}, h('label.f', {}, h('input', {type: 'checkbox', checked: !!p.saveDrinks && !p.beyondGoal, onchange: e => { p.saveDrinks = e.target.checked; if (e.target.checked) p.beyondGoal = false; touch(); }}), 'ドリンクを温存する', h('span.hiftag', 'HIF 1回目の試験')),
       qtip('HIF（試験が2回続くシナリオ）の1回目で、2回目のためにドリンクを残したいときに入れます。入れると、届く確率 → ドリンク → 手数 の順で比べ、ドリンクを少なく使う手を選びます。ほかのシナリオ・HIF の2回目では入れなくてかまいません（ドリンクは比べず、届く確率 → 手数 の順）'),
-      // 点数を伸ばす（試作・未検証、1.12.0、利用者の決定）：目標点に届いた後も、点の平均が高い手を選ぶ。温存とは同時に使わない
-      h('label.f.beyond', {}, h('input', {type: 'checkbox', checked: !!p.beyondGoal, onchange: e => { p.beyondGoal = e.target.checked; if (e.target.checked) p.saveDrinks = false; touch(); }}), '点数を伸ばす'), h('small.unsup', '試作・未検証'),
-      qtip('入れると、届く確率を一番に、同じなら目標点に届いた先も含めた点の平均（期待最終点）が高い手を選びます。目標点に届いた後も手を続けます。ドリンク・手数は比べません。続きからの計算・途中からの即答・95%の答えはありません'),
+      // 点数を伸ばす（1.12.0、利用者の決定。1.14.6 で試作・未検証の印を外した＝利用者の決定）：目標点に届いた後も、点の平均が高い手を選ぶ。温存とは同時に使わない
+      h('label.f.beyond', {}, h('input', {type: 'checkbox', checked: !!p.beyondGoal, onchange: e => { p.beyondGoal = e.target.checked; if (e.target.checked) p.saveDrinks = false; touch(); }}), '点数を伸ばす', h('span.hiftag.t2', 'HIF 2回目の試験におすすめ')), h('small.hint', '計算が重ければ外す'),
+      qtip('HIF の2回目の試験におすすめです。計算が重い（時間がかかる・答えが出にくい）ときは外してください。入れると、届く確率を一番に、同じなら目標点に届いた先も含めた点の平均（期待最終点）が高い手を選びます。目標点に届いた後も手を続けます。ドリンク・手数は比べません。続きからの計算・途中からの即答・95%の答えはありません'),
       p.saveDrinks && !p.beyondGoal && h('label.f.both', {}, h('input', {type: 'checkbox', checked: S.settings.both !== false, onchange: e => { S.settings.both = e.target.checked; touch(); }}), '95%の答えも出す（少し遅くなる）')),
     h('div.hudrow', {},
       field('熱意', 'enthusiasm', {tip: 'ゲームの画面の、今の熱意の値'}), field('熱意追加', 'enthusiasmBonus', {tip: 'ゲームの画面の、熱意追加の値'}),

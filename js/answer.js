@@ -15,7 +15,7 @@ const num1 = x => x === null || x === undefined ? '—' : (Math.round(x * 10) / 
 const num3 = x => x === null || x === undefined ? '—' : (Math.round(x * 1000) / 1000).toLocaleString('ja-JP');
 const secText = ms => ms < 1000 ? '1秒未満' : ms < 10000 ? (ms / 1000).toFixed(1) + '秒' : Math.round(ms / 1000) + '秒';
 // 見出しの比べる順：温存しない（d なし）は「届く確率 → 手数」。温存するときは、達成率最大なら届く確率を先に、95% なら「95%以上で」
-const headOrder = R => R.objective === 'beyondGoal' ? '点数を伸ばす（届く確率 → 期待最終点・試作）・' : !R.order ? '' : !R.order.includes('d') ? ordWords(R.order) + '・'
+const headOrder = R => R.objective === 'beyondGoal' ? '点数を伸ばす（届く確率 → 期待最終点）・' : !R.order ? '' : !R.order.includes('d') ? ordWords(R.order) + '・'
   : 'ドリンクを温存（' + (R.criterion === 'max' ? '届く確率 → ' : `達成率 ${R.criterion}% 以上で `) + ordWords(R.order.replace('p', '')) + '）・';
 const ordWords = o => o.split('').map(c => ({d: 'ドリンク', p: '届く確率', a: '手数'})[c]).join(' → ');
 // 0 より大きいのに 0.01% 未満の確率は、0% と読めないように有効数字2桁で出す（例 0.0031%）
