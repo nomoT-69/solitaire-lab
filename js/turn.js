@@ -118,7 +118,8 @@ export function renderTurn(root, rerender) {
             h('button', {disabled: P.drinksHeld.length >= MAX_DRINKS, title: P.drinksHeld.length >= MAX_DRINKS ? `持てるのは${MAX_DRINKS}本まで` : '', onclick: () => { P.drinksHeld.push(id); touch(); }}, '＋')); }))
           : h('span.hint', 'デッキにドリンクがありません'))),
     itemBox(),
-    h('button.more', {onclick: () => { showMore = !showMore; rerender(); }}, (showMore ? '▾' : '▸') + ' 詳しい条件（直前の指針・回数・継続効果・成長・前の局面）'),
+    regBox(),
+    h('button.more', {onclick: () => { showMore = !showMore; rerender(); }}, (showMore ? '▾' : '▸') + ' 詳しい条件（直前の指針・回数・成長・前の局面）'),
     showMore && moreBox());
 
   // P アイテムの入力欄：デッキの P アイテムのうち、入力の要るもの（発動済みの回数・カウンタ。エンジンの pItemInputs）と、試作・未対応の注記があるものだけ出す
@@ -162,6 +163,16 @@ export function renderTurn(root, rerender) {
       stamina && h('div.hudrow', {}, field('コストを0にする残り回数', 'nullifyCostCards', {tip: 'ソリティアを始める前に全身全霊+ などを使ったときの、コスト（体力を含む）が0になる残りの回数。残りがある間は、体力が減ったときの効果が発動しません'})));
   }
 
+  // 継続効果（夏夜に咲く思い出など、使った札が残す効果）：よく使うので、詳しい条件から上に出した（1.15.1、利用者の要望）
+  function regBox() {
+    return h('div.items.regs', {}, h('h4', '継続効果（夏夜など、使った札が残す効果）'),
+      P.registered.map((r, i) => !D.cardById.get(r.card)?.registers?.limit && h('div.itemrow', {}, pic('cards', r.card, D.cardById.get(r.card)?.name || '?', 32), h('span.inm', D.cardById.get(r.card)?.name),
+        // ゲームの表示（5→4→…→1、1 のときに札を使うと発動）で入れる。計算の部品のカウンタ（0→1→…→4、4 のとき次の札で発動）＝ 5 − 表示
+        num('ゲームの表示', 5 - ((r.counter || 0) % 5), v => { r.counter = 5 - Math.max(1, Math.min(5, v ?? 5)); touch(); }, {min: 1, max: 5, width: 4, hint: '1 なら次の札で発動'}),
+        h('button.x', {onclick: () => { P.registered.splice(i, 1); touch(); }}, '×'))),
+      h('div.row', {}, D.cards.filter(c => c.registers?.counter && (c.upgraded || !c.plusId)).map(c => h('button.mini', {onclick: () => { P.registered.push({card: c.id, counter: 0}); touch(); }}, '＋ ' + c.name))));
+  }
+
   function moreBox() {
     const hist = S.history.filter(x => x.deckId === dk.id);
     return h('div.more', {},
@@ -169,12 +180,6 @@ export function renderTurn(root, rerender) {
         h('label.hf', {}, h('span.sl', '直前の指針'), h('select', {onchange: e => setp('prevStance')(e.target.value)}, [['none', 'なし'], ...STANCES].map(([v, t]) => h('option', {value: v, selected: p.prevStance === v}, t)))),
         field('スコア上昇', 'scoreBuff', {step: 5, pct: true}), field('残りターン', 'turnsRemaining'), field('ドリンクの上限', 'drinkCap', {tip: 'このソリティアで使ってよいドリンクの本数（空欄＝上限なし）'}), field('ゲームの山札', 'gameDeckCount', {tip: 'ゲームの画面の山札の枚数。入れると、振り分けた山札の枚数と照らし合わせます'})),
       h('div.hudrow', {}, field('温存の回数', 'preservationTimes'), field('強気の回数', 'strengthTimes'), field('のんびりの回数', 'leisureTimes'), field('札の効果での指針変更', 'directStanceTimes')),
-      h('h4', '継続効果（使った札が残す効果）'),
-      P.registered.map((r, i) => !D.cardById.get(r.card)?.registers?.limit && h('div.itemrow', {}, pic('cards', r.card, D.cardById.get(r.card)?.name || '?', 32), h('span.inm', D.cardById.get(r.card)?.name),
-        // ゲームの表示（5→4→…→1、1 のときに札を使うと発動）で入れる。計算の部品のカウンタ（0→1→…→4、4 のとき次の札で発動）＝ 5 − 表示
-        num('ゲームの表示', 5 - ((r.counter || 0) % 5), v => { r.counter = 5 - Math.max(1, Math.min(5, v ?? 5)); touch(); }, {min: 1, max: 5, width: 4, hint: '1 なら次の札で発動'}),
-        h('button.x', {onclick: () => { P.registered.splice(i, 1); touch(); }}, '×'))),
-      h('div.row', {}, D.cards.filter(c => c.registers?.counter).map(c => h('button.mini', {onclick: () => { P.registered.push({card: c.id, counter: 0}); touch(); }}, '＋ ' + c.name))),
       growthBulk(P, all, touch),
       h('h4', '局面の出し入れ'),
       h('div.row', {},
