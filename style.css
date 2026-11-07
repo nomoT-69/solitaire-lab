@@ -316,7 +316,10 @@ button.sec:hover:not(:disabled) { background: var(--acc2); }
 /* 答えの見出しの小さな印（即答・前の計算を使用 など） */
 .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
 .tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--infobg); color: var(--info); cursor: help; }
-.lastexam { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 2px 0 8px; }
+.lastexam { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 28px; margin: 2px 0 8px; }
+.lastexam .opt { display: flex; flex-direction: column; gap: 4px; }
+.lastexam .optrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.lastexam .both { margin-left: 24px; font-size: 14px; }
 
 dialog.restore { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; width: min(720px, 92vw); background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
 dialog.restore::backdrop { background: rgba(0,0,0,.35); }
