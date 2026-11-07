@@ -49,6 +49,22 @@ function mergeSub(tree, at, sub) {
   tree.nodes[at] = tree.nodes[off + sub.root];
 }
 let expanding = null;
+// 次の手の予定（1.15.0、利用者の要望）：引きで分かれなければ次の手、分かれるなら引く可能性のある札を出す（実際の札は、押したあとに選ぶ）
+function nextPreview(tree, node, moveNo) {
+  if (!node.edges?.length) return null;
+  if (node.edges.length === 1) {
+    const c = tree.nodes[node.edges[0].next];
+    if (!c) return null;
+    if (c.end) return h('p.preview', {}, h('b', 'そのあと：'), c.cut ? '（この先は省略）' : c.reached ? 'ここで終わり（目標点に届く）' : 'ここで終わり');
+    return h('p.preview', {}, h('b', `${moveNo + 1}手目の予定：`), c.icon ? pic(c.icon.kind, c.icon.id, c.act, 28) : null, c.act);
+  }
+  const seen = new Map();
+  for (const e of node.edges) for (const x of e.drawn) if (!seen.has(x.id)) seen.set(x.id, x.name);
+  if (!seen.size) return h('p.preview', {}, h('b', 'そのあと：'), '引きによって次の手が変わります');
+  return h('div.preview', {}, h('b', '使ったあとに引く可能性がある札：'),
+    h('div.prevcards', {}, [...seen].map(([id, name]) => h('span.pc', {}, pic('cards', id, name, 28), name))),
+    h('p.hint', `押したあとに、実際に引いた札を選んでもらいます。${moveNo + 1}手目は、引いた札によって変わります。`));
+}
 // その手で入るスコアと、熱意などの変わり方（ゲームの画面と照らし合わせるため。1.14.1、利用者の要望）。
 // 引く札で変わらないことが多いが、変わるときは幅で出す。手の前の値＝node.st、後の値＝分かれの先の st
 function gainOf(tree, node) {
@@ -153,7 +169,8 @@ function resultView(R, rerender, {checkList} = {}) {
     const steps = S.play.steps;
     const {node, id: nodeId, waiting} = walk(R.tree, steps);
     const push = s => { steps.push(s); save(); rerender(); };
-    if (!steps.length) add(h('div.lbl', '次の手'), nextView(R, false));
+    const moveNo = steps.filter(x => x.type === 'act').length + (waiting ? 0 : 1);   // 何手目か（1.15.0）
+    if (!steps.length) add(h('div.lbl', '1手目'), nextView(R, false));
     if (node.end && node.cut && !node.expandErr && canExpand()) {
       // 起きやすい手順に入らなかった引き：続きを、答えを出したスレッドから取り寄せる（計算し直しは要らない）
       if (expanding !== node) { expanding = node; const tree = R.tree;
@@ -171,12 +188,16 @@ function resultView(R, rerender, {checkList} = {}) {
     } else if (waiting) {
       add(...drawPicker(node, push, steps.length, rerender));   // いつも1枚ずつ選ぶ（1.14.4、利用者の決定。前は組み合わせが7通り以上のときだけで、それ以外は手札の一覧）
     } else {
-      if (steps.length) add(h('div.lbl', '次の手'), h('div.nmain', {}, node.icon ? pic(node.icon.kind, node.icon.id, node.act, 64) : null, h('div.ntext', node.act)),
+      if (steps.length) add(h('div.lbl', `${moveNo}手目`), h('div.nmain', {}, node.icon ? pic(node.icon.kind, node.icon.id, node.act, 64) : null, h('div.ntext', node.act)),
         h('div.kpis', {}, kpi('この先の達成率', pct(node.p))));
       if (node.sameEval > 1) add(h('p.hint', `この局面では、同じ評価の手が ${node.sameEval} 通りあります。`));
       const g = gainOf(R.tree, node);
       if (g) add(h('p.gainline', {}, h('b', g.text), g.sub && h('span', g.sub)));
-      add(h('button.big.pri.wide', {onclick: () => push({type: 'act', label: node.act, gain: g?.short || null})}, node.kind === 'endTurn' ? 'ターンを終えた →' : node.kind === 'drink' ? '飲んだ →' : '使った →'));
+      // 何をすればよいかを書く（初めての人が「使った →」に気づかず全手順の表を見ていた。1.15.0、利用者の決定「A でボタンは B の言葉」）
+      const verb = node.kind === 'endTurn' ? 'ターンを終える' : node.kind === 'drink' ? `${node.act} を飲む` : `${node.act} を使う`;
+      add(h('ol.howto', {}, h('li', `ゲームで ${verb}`), h('li', '終わったら、下のボタンを押す（次の手を案内します）')));
+      add(h('button.big.pri.wide', {onclick: () => push({type: 'act', label: node.act, gain: g?.short || null})}, node.kind === 'endTurn' ? 'ターンを終えたら押す →' : node.kind === 'drink' ? 'ゲームで飲んだら押す →' : 'ゲームで使ったら押す →'));
+      add(nextPreview(R.tree, node, moveNo));
       // プレイの途中：ここまでの局面を、計算の入力にする（引いた札が決まったあとで計算し直すと速い）
       if (steps.length && R.setup && deck()?.id === R.deckId) add(h('button.wide.midbtn', {disabled: making, title: '今の手札・行動回数・熱意などのまま、局面の入力にします。目標点はここまでに入った点を引きます',
         onclick: () => makePhase(R, steps, rerender, true)}, making ? '作っています…' : 'ここから局面を作る（今の手札・行動回数のまま）'),
@@ -209,7 +230,7 @@ function resultView(R, rerender, {checkList} = {}) {
 
   // 詳しく
   if (R.tree) add(h('button.wide.stepsbtn', {onclick: () => { S.ui.steps = !S.ui.steps; save(); rerender(); if (S.ui.steps) setTimeout(() => document.getElementById('steps')?.scrollIntoView({behavior: 'smooth'}), 50); }},
-    S.ui.steps ? '全手順（詳細）を閉じる' : '全手順（詳細）を見る ↓'));
+    S.ui.steps ? '全手順の表を閉じる' : '全手順の表（くわしく見たい人向け） ↓'));
   add(h('button.more', {onclick: () => { detailsOpen = !detailsOpen; rerender(); }}, (detailsOpen ? '▾' : '▸') + ' 詳しく（比較表・自然さ・答えの確かさ）'));
   if (detailsOpen) add(details(R, kind, stName, stCls));
   add(h('button.more', {title: '版・設定・局面・答えをコピーします（個人情報は入りません）', onclick: copyReport}, '答えがおかしい？ 報告用の情報をコピー'));
@@ -229,7 +250,7 @@ function drawPicker(node, push, key, rerender) {
   const choose = id => { pick.ids.push(id); const left = node.edges.filter(e => rest(e)); if (left.length === 1) go({e: left[0], i: node.edges.indexOf(left[0])}); else rerender(); };
   const exact = cand.filter(c => !c.rest.length);
   return [h('div.lbl', '何を引きましたか？'),
-    h('p.hint', pick.ids.length ? `${pick.ids.length + 1}枚目は？（順は関係ありません）` : '引いた札を1枚ずつ選んでください（順は関係ありません）'),
+    h('p.hint', pick.ids.length ? `${pick.ids.length + 1}枚目は？（順は関係ありません）` : 'ゲームで引いた札を、1枚ずつ押してください（順は関係ありません）'),
     pick.ids.length ? h('div.row.picked', {}, h('span', '選んだ札：' + pick.ids.map(id => names.get(id)).join('・')), h('button.mini', {onclick: () => { pick.ids.pop(); rerender(); }}, '1つ戻す')) : null,
     h('div.draws.chips', ids.map(id => h('button.drawbtn', {onclick: () => choose(id)}, pic('cards', id, names.get(id), 40), h('b', names.get(id))))),
     ...exact.map(c => h('button.wide', {onclick: () => go(c)}, (c.e.drawn.length ? `これで全部（${drawnText(c.e.drawn)}）` : 'ドロー札なし') + (exact.length > 1 && c.e.hand ? `　手札：${c.e.hand.map(x => x.name).join('・')}` : '')))];

@@ -331,3 +331,10 @@ dialog.restore .row { gap: 8px; justify-content: flex-end; }
 .steptbl tr.future td { opacity: .55; }
 .hiftag { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--acc2); color: var(--acc); border: 1px solid var(--acc); vertical-align: 1px; }
 .hiftag.t2 { background: var(--infobg); color: var(--info); border-color: var(--info); }
+ol.howto { margin: 4px 0 8px; padding-left: 1.4em; font-size: 14px; color: var(--sub); }
+ol.howto li:first-child { color: var(--ink); font-weight: 700; }
+.preview { margin: 8px 0; padding: 6px 10px; border: 1px dashed var(--line2); border-radius: 8px; font-size: 13px; color: var(--sub); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.preview b { color: var(--ink); }
+.preview .prevcards { display: flex; flex-wrap: wrap; gap: 4px 10px; width: 100%; }
+.preview .pc { display: inline-flex; align-items: center; gap: 4px; }
+.preview .hint { width: 100%; margin: 0; }
