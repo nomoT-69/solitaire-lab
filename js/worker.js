@@ -172,7 +172,7 @@ self.onmessage = e => {
       var J0 = J;
       const t0 = Date.now();
       post('progress', {stage: '続きから計算中', ms: 0});
-      const r = J.job.run({maxMs: m.maxMs, onUpdate: u => { try { post('update', {result: summarize(J.model, u, J.o, Date.now() - t0, false)}); } catch {} }});
+      const r = J.job.run({maxMs: m.maxMs, onUpdate: interimPoster(post, t0, (u, ms, full) => summarize(J.model, u, J.o, ms, full))});
       const out = summarize(J.model, r, J.o, Date.now() - t0, true);
       if (!r.resumable) { const job = J.job; J = null; keepForFollow(job, r, J0.key, J0.model, J0.dataKey); }
       out.canFollow = !!F;
@@ -196,7 +196,7 @@ self.onmessage = e => {
     if (o.beyondGoal) {
       dropJob(); F = null;
       post('progress', {stage: '計算中（点数を伸ばす）', ms: Date.now() - t0});
-      const onUpdate = u => { try { post('update', {result: summarize1(model, u, o, Date.now() - t0, false)}); } catch {} };
+      const onUpdate = interimPoster(post, t0, (u, ms, full) => summarize1(model, u, o, ms, full));
       const r = A.solveAegis(model, {beyondGoal: true, maxMs: o.maxMs, maxEstMiB: base.maxEstMiB, maxHeapMiB: base.maxHeapMiB, onUpdate});
       const out = summarize1(model, r, o, Date.now() - t0, true);
       out.canFollow = false; out.resumable = false;
@@ -235,7 +235,7 @@ self.onmessage = e => {
     dropJob();
     const crit = critOf(o);
     post('progress', {stage: '計算中（Javelin → Tomahawk）', ms: Date.now() - t0});
-    const onUpdate = u => { try { post('update', {result: summarize(model, u, o, Date.now() - t0, false)}); } catch {} };
+    const onUpdate = interimPoster(post, t0, (u, ms, full) => summarize(model, u, o, ms, full));
     let r;
     if (typeof A.createAegisJob === 'function') {   // 続きから計算できる形（予算で止まっても、状態を持ったまま）
       const job = A.createAegisJob(model, {...base, ...crit});
@@ -250,6 +250,20 @@ self.onmessage = e => {
     post('error', {message: String(err?.message || err)});
   }
 };
+
+// 途中の答え：次の手だけでなく、手順の木（プレイの案内）も付けて送る。中止したとき、その答えで「使った →」から始められるように（1.14.8、利用者の指摘）。
+// 木を作るのは重いことがあるので、前に作ってから 5 秒以上たち、作るのに使った時間の合計が経過時間の 1/4 以下のときだけ。それ以外は次の手だけ
+function interimPoster(post, t0, sum) {
+  let last = 0, cost = 0;
+  return u => {
+    try {
+      const now = Date.now(), full = now - last >= 5000 && cost <= (now - t0) / 4;
+      const r = sum(u, now - t0, full);
+      if (full) { cost += Date.now() - now; last = Date.now(); r.final = false; r.interimTree = true; }
+      post('update', {result: r});
+    } catch {}
+  };
+}
 
 // 最適の答えなら job を持っておく（続きの局面の即答のため。重い局面で約0.15GB）。使えなければ手放す
 function keepForFollow(job, r, key, model, dk) {

@@ -57,14 +57,14 @@ export function startRun(over = {}, {keep = false} = {}) {
   const saveD = !beyond && !!P.params?.saveDrinks;
   const opts = {...(!saveD || st.both === false ? {criterion: 'max'} : {criterion: '95', both: true}), order: saveD ? st.order : 'pa', ...(beyond ? {beyondGoal: true} : {}), ...(st.testTree ? {treeLimit: st.testTree.limit, topPaths: st.testTree.top} : {}), extras: ['ev', 'floor'].filter(k => st.extras[k]), maxMs: Math.max(1, over.budgetSec ?? st.budgetSec) * 1000, maxStates: over.maxStates ?? st.maxStates};
   lastOpts = opts;
-  Object.assign(RUN, {status: 'running', stage: '準備中', started: Date.now(), interim: null, error: null, prev});
+  Object.assign(RUN, {status: 'running', stage: '準備中', started: Date.now(), interim: null, interimTree: null, error: null, prev});
   S.result = null; S.play = null; save();
   // プレイの途中から作った局面を、直さずに計算するときは、前の最適の答えから即答を試す（worker.js の follow。同じでなければ計算し直す）
   const fw = P.carry?.follow;
   const follow = fw?.path?.length && fw.sig && fw.sig === JSON.stringify([setup, target]) && JSON.stringify(fw.calcSettings ?? null) === JSON.stringify(S.calcSettings ?? null) ? {path: fw.path} : null;
   startSolve({setup, target, opts, calcSettings: S.calcSettings, follow}, {
     progress: m => { RUN.stage = m.stage; rerender(); },
-    update: m => { RUN.interim = m.result; rerender(); },
+    update: m => { RUN.interim = m.result; if (m.result?.tree) RUN.interimTree = m.result; rerender(); },
     result: m => {
       const fresh = {...m.result, target, setup, phase: phase0, budgetSec: opts.maxMs / 1000, maxStates: opts.maxStates, calcSettings: S.calcSettings, deckId: dk.id, table: null, at: Date.now()};
       // 新しい答えが最適でなく、前の答えのほうが良ければ、前の答えを使う（予算は新しいほうを残す）
@@ -80,11 +80,11 @@ export function startRun(over = {}, {keep = false} = {}) {
 export function resumeRun(addSec) {
   const prev = S.result;
   if (!prev || !canResume()) return false;
-  Object.assign(RUN, {status: 'running', stage: '続きから計算中', started: Date.now(), interim: null, error: null, prev});
+  Object.assign(RUN, {status: 'running', stage: '続きから計算中', started: Date.now(), interim: null, interimTree: null, error: null, prev});
   lastOpts = {maxMs: (prev.budgetSec + addSec) * 1000, maxStates: prev.maxStates};
   const ok = resumeSolve(addSec * 1000, {
     progress: m => { RUN.stage = m.stage; rerender(); },
-    update: m => { RUN.interim = m.result; rerender(); },
+    update: m => { RUN.interim = m.result; if (m.result?.tree) RUN.interimTree = m.result; rerender(); },
     result: m => {
       const fresh = {...m.result, target: prev.target, setup: prev.setup, phase: prev.phase, budgetSec: prev.budgetSec + addSec, maxStates: prev.maxStates,
         calcSettings: prev.calcSettings, deckId: prev.deckId, table: null, at: Date.now(), resumedSec: (prev.resumedSec || 0) + addSec};
@@ -97,13 +97,15 @@ export function resumeRun(addSec) {
   return ok;
 }
 
-// 中止：最終の答えの前なら、途中の暫定の答えを「暫定（中止）」として残す
+// 計算をやめる／この答えで決める：最終の答えの前なら、途中の暫定の答えを「今のところの最善（途中で決定）」として残す
+export const lastBudget = () => (lastOpts?.maxMs ?? S.settings.budgetSec * 1000) / 1000;
 export function cancelRun() {
   cancelSolve();
   if (RUN.status === 'running') {
     if (RUN.prev && !betterThan(RUN.interim, RUN.prev)) S.result = RUN.prev;
-    else if (RUN.interim) S.result = {...RUN.interim, final: true, canceled: true, table: null, at: Date.now(), deckId: deck()?.id, phase: structuredClone(S.phase), budgetSec: lastOpts.maxMs / 1000, maxStates: lastOpts.maxStates};
+    // 途中の答えに手順の木がなければ、木のある一番新しい途中の答えを使う（「使った →」から始められるように。1.14.8）
+    else if (RUN.interim) S.result = {...(RUN.interim.tree ? RUN.interim : RUN.interimTree || RUN.interim), final: true, canceled: true, table: null, at: Date.now(), deckId: deck()?.id, phase: structuredClone(S.phase), budgetSec: lastOpts.maxMs / 1000, maxStates: lastOpts.maxStates};
     RUN.status = 'canceled'; RUN.prev = null;
-  } else if (RUN.status === 'table') { if (S.result) S.result.table = {note: '中止しました'}; RUN.status = 'done'; }
+  } else if (RUN.status === 'table') { if (S.result) S.result.table = {note: '比較表は途中でやめました'}; RUN.status = 'done'; }
   save(); rerender();
 }

@@ -3,7 +3,7 @@
 import {D} from './data.js';
 import {S, save, deck, STANCES} from './store.js';
 import {h, pic, fmt, toast, qtip} from './ui.js';
-import {RUN, startRun, cancelRun, betterThan, resumeRun, canResume, phaseSig} from './run.js';
+import {RUN, startRun, cancelRun, lastBudget, betterThan, resumeRun, canResume, phaseSig} from './run.js';
 import {validate, entries, zoneOf} from './phase.js';
 import {STATUS, orderText, critText} from './result.js';
 import {turnEnd, canExpand, expandSolve} from './solver.js';
@@ -93,14 +93,18 @@ export function renderAnswer(root, rerender) {
     const I = RUN.status === 'running' ? (fromPrev ? RUN.prev : RUN.interim) : null;
     const notMet = I && I.meetsAlpha === false && I.criterion !== 'max';
     root.append(h('section.panel.ans', {},
-      h('div.runline', {}, h('span.spin'), h('b', RUN.status === 'table' ? '比較表を計算中' : '計算中'), h('span#elapsed', ((Date.now() - RUN.started) / 1000).toFixed(1) + '秒'), h('button.danger', {onclick: cancelRun}, '中止')),
+      h('div.runline', {}, h('span.spin'), h('b', RUN.status === 'table' ? '比較表を計算中' : '計算中'), h('span#elapsed', ((Date.now() - RUN.started) / 1000).toFixed(1) + '秒'), !(RUN.status === 'running' && (RUN.interim?.tree || RUN.interimTree || RUN.prev)) && h('button.danger', {onclick: cancelRun}, RUN.status === 'table' ? '比較表をやめる' : '計算をやめる')),
       h('div.hint', RUN.stage),
       I && h('div.interim', {}, h('div.lbl', fromPrev ? '前の計算の答え（いま、もっと良い答えを探しています）' : '途中の答え（暫定。計算は続いています）'), notMet && h('p.warnline', `まだ指定の達成率 ${I.criterion}% に届いていません`), nextView(I, true)),
+      // 途中の答えで決める：手順の木のある途中の答え（worker.js の interimPoster）か前の答えがあれば、計算を止めてその答えで「使った →」から始められる（1.14.8、利用者の決定 案A）
+      RUN.status === 'running' && (RUN.interim?.tree || RUN.interimTree || RUN.prev) && h('div.decide', {},
+        h('p.hint', `表示されている答えでよければ「この答えで決める」を押してください。そのまま待つと、もっと良い答えが見つかることがあります（最大 ${Math.round(lastBudget())}秒）。`),
+        h('button.wide', {onclick: cancelRun}, !fromPrev && !RUN.interim?.tree && RUN.interimTree ? `この答えで決める（${Math.round((RUN.interimTree.ms || 0) / 1000)}秒の時点の答え）` : 'この答えで決める')),
       RUN.status === 'table' && S.result && resultView(S.result, rerender)));
     return;
   }
   if (RUN.status === 'error') root.append(h('section.panel.ans.errbar', {}, h('b', '計算できませんでした'), h('pre', RUN.error), h('p.hint', '局面の入力や「札の設定」を確かめてください。')));
-  if (RUN.status === 'canceled' && !S.result) root.append(h('section.panel.ans.warnbar', {}, '中止しました。'));
+  if (RUN.status === 'canceled' && !S.result) root.append(h('section.panel.ans.warnbar', {}, '計算をやめました。'));
 
   // 答えがない、または局面を変えた
   root.append(computeBox);
@@ -130,7 +134,7 @@ function resultView(R, rerender, {checkList} = {}) {
   const b = R.best;
   const box = h('section.panel.ans', {});
   const add = (...xs) => box.append(...xs.filter(x => x));   // false・null は出さない
-  add(h('div.ansHead', {}, h('span.status', {class: stCls, title: stDesc}, stName + (R.canceled ? '（中止）' : '')),
+  add(h('div.ansHead', {}, h('span.status', {class: stCls, title: stDesc}, stName + (R.canceled ? '（途中で決定）' : '')),
     h('span.hint', {title: R.criterion === 'max' ? '達成率最大の答え' : `${R.criterion}%で良ければの答え`}, headOrder(R) + secText(R.ms) + 'で計算')));
   for (const n of R.notes || []) add(h('p.warnline', n));   // 計算の部品の注意書き
   const tags = [R.followed && ['前の答えから即答', '前の局面の答えから読み出しました（計算し直していません。答えは計算し直したときと同じです）'],
