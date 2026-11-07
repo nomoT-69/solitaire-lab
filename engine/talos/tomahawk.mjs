@@ -518,6 +518,9 @@ export function solveTomahawk(model,opts){
     // decisionNodes＝分かれ目（手を選ぶ局面）の数。止める（何もしない）が同じ評価になる場合も1つの手として数える。
     function extract(target=best){
       if(!target||!curves)return null;const out=[];let altNodes=0,decisionNodes=0,rootTies=null;
+      // 同じ局面（グラフの番号・必要点・目指す点が同じ）は1つの節にまとめる（2026-11-07、GUI の担当の報告：VEIL の局面で、7,525局面の方策に56万節の木を作り、
+      // 予算・メモリの止めのない取り出しで数分・数GB かかっていた）。同じ局面からの方策は同じなので、値は変わらない。sameEval の数は節ごとに1回
+      const memo=new Map();const ptKey=v=>dims.map(k=>v[k]===null||v[k]===undefined?'':str(v[k])).join(',');
       const hitOf=(s,id,n,v,act,ai)=>{
         const br=model.branches(s,act),dc=act.type==='drink'?ONE:ZERO,ac=act.type==='skip'?ZERO:ONE;const a0=actStart.a[id];
         const b0=brStart.a[a0+ai];if(brStart.a[a0+ai+1]-b0!==br.length)throw Error('EXTRACT_GRAPH');
@@ -530,7 +533,8 @@ export function solveTomahawk(model,opts){
         const hit=partial.find(u=>same(withCost(u,dc,ac),v));return hit?{hit,br,b0}:null;};
       function build(s,id,v,isRoot){
         const n=model.target-s.score;
-        if(n<=0){out.push({id:out.length,key:model.v6key(s),choice:null,edges:[]});return out.length-1;}
+        const mk=n<=0?'G|'+model.v6key(s):id+'|'+n+'|'+ptKey(v);if(!isRoot){const h=memo.get(mk);if(h!==undefined)return h;}
+        if(n<=0){out.push({id:out.length,key:model.v6key(s),choice:null,edges:[]});memo.set(mk,out.length-1);return out.length-1;}
         const a0=actStart.a[id];const acts=actStart.a[id+1]===a0?[]:model.choices(s);   // 操作数の上限で切った局面は、グラフに手がない（止めるだけ）
         if(actStart.a[id+1]-a0!==acts.length)throw Error('EXTRACT_GRAPH');
         // 同じ評価の手：止めるも1つの手として数える
@@ -538,11 +542,11 @@ export function solveTomahawk(model,opts){
         for(let ai=0;ai<acts.length;ai++){const h=hitOf(s,id,n,v,acts[ai],ai);if(h){ties++;if(!chosen&&!same(v,STOP))chosen={...h,act:acts[ai]};}}
         if(acts.length){decisionNodes++;if(ties>1)altNodes++;}
         if(isRoot)rootTies=ties;
-        if(same(v,STOP)){out.push({id:out.length,key:model.v6key(s),choice:null,edges:[],sameEval:ties});return out.length-1;}
+        if(same(v,STOP)){out.push({id:out.length,key:model.v6key(s),choice:null,edges:[],sameEval:ties});memo.set(mk,out.length-1);return out.length-1;}
         if(!chosen)throw Error('EXTRACT_NO_MATCH');
         const {hit,br,b0,act}=chosen;
         const picks=[];for(let x=hit.picks;x;x=x.prev)picks.push(x.c);picks.reverse();
-        const node={id:out.length,key:model.v6key(s),choice:act.raw??act,edges:null,sameEval:ties};out.push(node);
+        const node={id:out.length,key:model.v6key(s),choice:act.raw??act,edges:null,sameEval:ties};out.push(node);memo.set(mk,node.id);
         node.edges=br.map((b,i)=>({index:b.index,p:b.pFloat,key:model.v6key(b.s),drawn:[],next:build(b.s,brChild.a[b0+i],picks[i],false)}));
         return node.id;
       }

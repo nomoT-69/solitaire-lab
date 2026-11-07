@@ -351,7 +351,10 @@ function playTree(model, pol, s0 = model.root, id0 = pol.root, base = []) {
   const actOf = (s, n) => { const a = model.choices(s).find(a => JSON.stringify(a.raw ?? a) === JSON.stringify(n.choice)); if (!a) throw Error('方策の木の手が、局面の合法手に見つかりません'); return a; };
   // 入れる手順：全部入るなら全部。入らなければ、起きやすい順に TOP_PATHS 通り（確率の大きい順に広げる）
   let keep = null;
-  if (!(base.length === 0 && pol.nodes.length <= TREE_LIMIT)) {
+  // 方策は DAG（同じ局面は同じ節。計算の部品 1bba57c から）。画面には木に広げて送るので、広げたときの節の数で決める（上限を超えたら数えるのをやめる）
+  const sizeMemo = new Map();
+  const treeSize = id => { if (sizeMemo.has(id)) return sizeMemo.get(id); let n = 1; for (const e of pol.nodes[id].edges || []) { n += treeSize(e.next); if (n > TREE_LIMIT) break; } n = Math.min(n, TREE_LIMIT + 1); sizeMemo.set(id, n); return n; };
+  if (!(base.length === 0 && treeSize(pol.root) <= TREE_LIMIT)) {
     keep = new Set(['']);
     const heap = [{p: 1, s: s0, id: id0, path: []}], up = i => { while (i) { const j = (i - 1) >> 1; if (heap[j].p >= heap[i].p) break; [heap[i], heap[j]] = [heap[j], heap[i]]; i = j; } };
     const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l].p > heap[m].p) m = l; if (r < heap.length && heap[r].p > heap[m].p) m = r; if (m === i) break; [heap[i], heap[m]] = [heap[m], heap[i]]; i = m; } } return top; };
@@ -363,7 +366,12 @@ function playTree(model, pol, s0 = model.root, id0 = pol.root, base = []) {
     }
   }
   // 印の先の値（届く確率・ドリンク・手数）だけを計算する（中身は送らない）
+  const valMemo = new Map();   // 同じ節は同じ局面なので、値は1回だけ計算する
   function valueOf(s, id) {
+    if (valMemo.has(id)) return valMemo.get(id);
+    const v = valueOf0(s, id); valMemo.set(id, v); return v;
+  }
+  function valueOf0(s, id) {
     const n = pol.nodes[id];
     if (n.choice === null) return [s.score >= model.target ? 1 : 0, 0, 0];
     let p = 0, d = n.choice.type === 'drink' ? 1 : 0, a = n.choice.type === 'skip' ? 0 : 1;

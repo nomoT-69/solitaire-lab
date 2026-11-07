@@ -135,7 +135,7 @@ export function renderTurn(root, rerender) {
         slots.map((x, i) => num(slots.length > 1 ? `発動済みの回数（${i + 1}）` : '発動済みの回数', firedOf(st, i, x.max), v => setFired(i, v), {min: 0, max: x.max, width: 4, hint: '/' + x.max})),
         slots.length ? qtip('ソリティアを始めるまでに、この P アイテムの効果が発動した回数（上限まで発動したら、それ以上は発動しない）') : null,
         hasCounter && num('カウンタ', st.counter, v => { st.counter = v ?? 0; touch(); }, {min: 0, width: 4}),
-        inf?.note && h('small.unsup', {title: inf.note}, '試作・未検証'),
+        inf?.note && !staminaTriggered(id) && h('small.unsup', {title: inf.note}, '試作・未検証'),   // 原点へのチケット（サンフェの P アイテム）は印を外した（1.15.2、利用者の決定）
         slots.some(x => x.enthusiasmBuffPerUse) && firedOf(st, 0, slots[0].max) > 0 && qtip(`発動した分（＋${Math.round(slots.reduce((a, x, i) => a + (x.enthusiasmBuffPerUse || 0) * firedOf(st, i, x.max), 0) * 100)}%）は、ゲームの熱意倍率の表示に入っています。計算では足しません`),
         inf && !inf.supported && h('small.unsup', '計算は未対応：' + (inf.problems[0] || '')));
     }).filter(Boolean);

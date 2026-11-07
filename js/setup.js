@@ -17,7 +17,7 @@ export function buildSetup({deck, phase, cards, items}) {
     const a = P.assume[en.uid] || {};
     const g = {score: a.score || 0, scoreTimes: a.times || 0};
     if (c.growth) {
-      const lim = c.growth.limit || 1, n = a.grown ?? lim;   // 既定は自己成長 MAX
+      const lim = c.growth.limit || 1, n = Number.isFinite(a.grown) ? a.grown : lim;   // 既定は自己成長 MAX（数でない値も MAX として扱う）
       if (n >= lim) x.grown = 'full';
       else { g.score += n * (c.growth.score || 0); g.scoreTimes += n * (c.growth.times || 0); x.limits = [lim - n]; }
     }

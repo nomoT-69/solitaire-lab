@@ -1,6 +1,22 @@
 // 画面の側から計算を動かす（Web Worker の起動・中止・知らせの受け取り）。計算中も画面は固まらない。
 import {D} from './data.js';
 
+// PC モード（serve.mjs --pc）：計算のスレッドを、この PC の Node のスレッドにする（Web Worker と同じ使い方。1.16.0）
+class PcWorker {
+  constructor() {
+    this.chain = fetch(PC_BASE() + '__pc/new', {method: 'POST'}).then(r => r.json()).then(({id}) => {
+      this.id = id;
+      this.es = new EventSource(PC_BASE() + '__pc/events?id=' + id);
+      this.es.onmessage = e => this.onmessage?.({data: JSON.parse(e.data)});
+      this.es.onerror = () => { if (!this.dead && this.es.readyState === 2) this.onerror?.({message: 'PC の計算とのつながりが切れました（サーバーを閉じましたか？）'}); };
+    }).catch(e => this.onerror?.({message: 'PC の計算につなげません：' + e.message}));
+  }
+  postMessage(m) { this.chain = this.chain.then(() => this.dead ? null : fetch(PC_BASE() + '__pc/send?id=' + this.id, {method: 'POST', body: JSON.stringify(m)})); }
+  terminate() { if (this.dead) return; this.dead = true; this.chain.then(() => { this.es?.close(); if (this.id) fetch(PC_BASE() + '__pc/kill?id=' + this.id, {method: 'POST'}); }); }
+}
+const PC_BASE = () => '/';
+const mkWorker = () => globalThis.PC_MODE ? new PcWorker() : new Worker(new URL('./worker.js', import.meta.url), {type: 'module'});
+
 let worker = null, seq = 0, H = null, resumable = false, followable = false, partial = false, expandCb = new Map(), expandSeq = 0;
 // handlers：{progress, update, result, table, error}。それぞれ worker からの知らせ（worker.js の先頭の説明）を受け取る
 // 答えが「続きから計算できる」（resumable）ときは、スレッドを止めずに残す（resumeSolve で続ける）
@@ -10,7 +26,7 @@ export function startSolve({setup, target, opts, calcSettings, follow = null}, h
   const reuse = !!worker && followable;   // （答えの木の続きを持っているだけのスレッドは使い回さない）
   if (!reuse) cancelSolve();
   const id = ++seq; H = handlers; resumable = false; followable = false; partial = false;
-  if (!reuse) worker = new Worker(new URL('./worker.js', import.meta.url), {type: 'module'});
+  if (!reuse) worker = mkWorker();
   worker.onmessage = e => {
     if (e.data.id !== seq) return;
     if (e.data.type === 'expanded') { const cb = expandCb.get(e.data.at); expandCb.delete(e.data.at); cb?.(e.data); return; }
@@ -46,7 +62,7 @@ export const isRunning = () => !!worker;
 let inspector = null;
 export function startInspect({ids, calcSettings, opts}, {done, error}) {
   inspector?.terminate();
-  inspector = new Worker(new URL('./worker.js', import.meta.url), {type: 'module'});
+  inspector = mkWorker();
   const end = () => { inspector?.terminate(); inspector = null; };
   inspector.onmessage = e => { if (e.data.type === 'inspected') { done(e.data.result); end(); } else if (e.data.type === 'error') { error(e.data.message); end(); } };
   inspector.onerror = e => { error('点検のスレッドで問題が起きました：' + (e.message || '読み込みの失敗')); end(); };
@@ -56,7 +72,7 @@ export function cancelInspect() { inspector?.terminate(); inspector = null; }
 
 // 次のターンの局面：プレイでたどった道筋の最後の局面の中身をもらう
 export function turnEnd({setup, target, calcSettings, path}, {done, error}) {
-  const w = new Worker(new URL('./worker.js', import.meta.url), {type: 'module'});
+  const w = mkWorker();
   w.onmessage = e => { if (e.data.type === 'turnEnd') done(e.data.state); else if (e.data.type === 'error') error(e.data.message); w.terminate(); };
   w.onerror = e => { error('計算のスレッドで問題が起きました：' + (e.message || '読み込みの失敗')); w.terminate(); };
   w.postMessage({type: 'nextTurn', id: 1, csv: D.csv, setup, target, calcSettings, path});

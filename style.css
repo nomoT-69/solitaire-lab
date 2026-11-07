@@ -338,3 +338,4 @@ ol.howto li:first-child { color: var(--ink); font-weight: 700; }
 .preview .prevcards { display: flex; flex-wrap: wrap; gap: 4px 10px; width: 100%; }
 .preview .pc { display: inline-flex; align-items: center; gap: 4px; }
 .preview .hint { width: 100%; margin: 0; }
+.pcbadge { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--okbg); color: var(--ok); border: 1px solid var(--ok); }
