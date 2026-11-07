@@ -71,7 +71,27 @@ class St{
 }
 const clone=s=>new St(s);
 
+// 入力の見張り（2026-11-07、利用者の決定「はい」。DESIGN 22.44：GUI の試しの局面で残り回数が null になっても黙って計算し、誤った答えになった）。
+// 数のはずの欄に数でない値（文字・NaN・Infinity、残り回数の並びの中の null）があれば、場所を書いたエラーにする。欄がない・null は今までどおり既定の値
+export function checkSetupNumbers(setup){
+  const bad=(where,v)=>{throw Error('入力の値が数ではありません（'+where+'）：'+(typeof v==='number'?String(v):JSON.stringify(v)));};
+  const num=(where,v)=>{if(v===undefined||v===null)return;   // 欄の null は今までどおり既定の値（残り回数の並びの中の null はエラー）
+if(typeof v!=='number'||!Number.isFinite(v))bad(where,v);};
+  const nonneg=(where,v)=>{num(where,v);if(v!==undefined&&v<0)bad(where,v);};
+  const lims=(where,a)=>{if(!Array.isArray(a))bad(where+'.limits',a);a.forEach((v,i)=>{if(typeof v!=='number'||!Number.isInteger(v)||v<0)bad(where+'.limits['+i+']',v);});};
+  for(const k of ['cap','trial','turnsRemaining','cardUses','enthusiasm','enthusiasmBonus','enthusiasmBuff','scoreBuff','strengthEffectBuff','preservationTimes','strengthTimes','leisureTimes',
+    'stanceChangedByDirectEffectTimes','cardsUsed','turnCardsUsed','fullPowerCharge','cumulativeFullPowerCharge','fullPowerChargeBuff','nullifyCostCards','halfCostTurns','doubleCostTurns','costReduction','costIncrease','drinkCap'])num(k,setup[k]);
+  const card=(where,x)=>{if(typeof x==='number')return num(where,x);if(!x||typeof x!=='object')return bad(where,x);num(where+'.id',x.id);
+    if(x.grown!==undefined&&x.grown!=='full'&&x.grown!==false&&x.grown!==true)bad(where+'.grown',x.grown);
+    if(x.limits!=null)lims(where,x.limits);num(where+'.counter',x.counter);
+    for(const f of ['g','c11n'])if(x[f]!==undefined){if(!x[f]||typeof x[f]!=='object')bad(where+'.'+f,x[f]);for(const [k,v] of Object.entries(x[f]))num(where+'.'+f+'.'+k,v);}};
+  for(const z of ['hand','deck','discard','removed','held'])if(Array.isArray(setup[z]))setup[z].forEach((x,i)=>card(z+'['+i+']',x));
+  if(Array.isArray(setup.drinks))setup.drinks.forEach((x,i)=>num('drinks['+i+']',x));
+  if(Array.isArray(setup.pItems))setup.pItems.forEach((x,i)=>{if(typeof x==='number')return;if(!x||typeof x!=='object')bad('pItems['+i+']',x);num('pItems['+i+'].id',x.id);num('pItems['+i+'].counter',x.counter);if(x.limits!=null)lims('pItems['+i+']',x.limits);});
+  if(Array.isArray(setup.registered))setup.registered.forEach((x,i)=>{if(!x||typeof x!=='object')bad('registered['+i+']',x);num('registered['+i+'].card',x.card);num('registered['+i+'].counter',x.counter);if(x.limits!=null)lims('registered['+i+']',x.limits);});
+}
 export function createEngine(data,setup,options={}){
+  checkSetupNumbers(setup);
   const cfg={cap:setup.cap??5,trial:setup.trial??1,turnsRemaining:setup.turnsRemaining??1,
     drinkCap:Number.isInteger(setup.drinkCap)?setup.drinkCap:null,drinkBase:(setup.drinks||[]).length};
 
