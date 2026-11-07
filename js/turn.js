@@ -202,13 +202,13 @@ export function renderTurn(root, rerender) {
   // 置き場：札のある置き場は枠で出し、空の置き場（保留・山札・捨て札・除外）は1行の小さな受け口にまとめる（ドラッグで入れられる）
   const count = k => all.filter(e => zoneOf(P, e.uid) === k).length;
   const miniZone = (k, title) => {
-    const box = h('div.zone.mini', {class: k, 'data-zone': k, title: title + 'は空です。札をここへドラッグするか、札を押して「' + title + 'へ」'}, h('b', title), h('span.cnt', '0'));
+    const box = h('div.zone.mini', {class: k, 'data-zone': k, title: title + 'は空です。札をここへドラッグするか、札を押して「' + title + 'へ」'}, h('b', title), h('span.cnt', '0枚'), h('small.dz', 'ここへ札をドラッグ'));
     box.addEventListener('dragover', e => { e.preventDefault(); box.classList.add('dragover'); });
     box.addEventListener('dragleave', () => box.classList.remove('dragover'));
     box.addEventListener('drop', e => { e.preventDefault(); box.classList.remove('dragover'); const u = e.dataTransfer.getData('text/plain'); if (u) move(u, k); });
     return box;
   };
-  const empties = [['held', '保留'], ['deck', '山札'], ['discard', '捨て札'], ['removed', '除外']].filter(([k]) => !count(k));
+  const empties = [['deck', '山札'], ['discard', '捨て札'], ['held', '保留'], ['removed', '除外']].filter(([k]) => !count(k));   // 山札・捨て札・保留の順（1.16.3、利用者の要望）。除外はその後
   const isEmpty = k => empties.some(x => x[0] === k);
   const piles = [['discard', '捨て札'], ['removed', '除外']].filter(([k]) => !isEmpty(k));
   const left = h('div.turnleft', {}, carry, hud,
@@ -216,7 +216,7 @@ export function renderTurn(root, rerender) {
       isEmpty('held') ? zoneBox('hand', '手札', {size: 'large', limit: 5, hint: '札を押すと置き場を選べます（キー 1:手札 2:保留 3:捨て札 4:除外 0:山札）。ドラッグでも動かせます'}) : h('div.handrow', {}, zoneBox('hand', '手札', {size: 'large', limit: 5, hint: '札を押すと置き場を選べます（キー 1:手札 2:保留 3:捨て札 4:除外 0:山札）。ドラッグでも動かせます'}), zoneBox('held', '保留', {size: 'small', limit: 2})),
       !isEmpty('deck') && zoneBox('deck', '山札', {hint: '山札＝デッキ全体 − ほかの置き場（自動で数えます）。札を押して「手札へ」'}),
       piles.length ? h('div.pilerow', {class: piles.length === 1 ? 'one' : ''}, piles.map(([k, t]) => zoneBox(k, t))) : null,
-      empties.length ? h('div.emptyzones', {}, h('span.sl', '空の置き場'), empties.map(([k, t]) => miniZone(k, t))) : null,
+      empties.length ? h('div.emptyzones', {}, h('span.sl', '空の置き場（札をドラッグして入れられます）'), h('div.ezgrid', {}, empties.map(([k, t]) => miniZone(k, t)))) : null,
       addBox));
   const right = h('aside.answer', {});
   renderAnswer(right, rerender);
