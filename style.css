@@ -354,3 +354,5 @@ ol.howto li:first-child { color: var(--ink); font-weight: 700; }
 .bulk .row { align-items: flex-end; gap: 18px; }
 .bulk label.f { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; margin: 0; }
 .bulk label.f .fl { font-size: 12px; color: var(--sub); }
+.deckbody.dragover { outline: 2px dashed var(--acc); outline-offset: -6px; background: var(--acc2); }
+.res[draggable=true] { cursor: grab; }

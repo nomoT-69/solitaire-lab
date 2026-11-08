@@ -101,7 +101,10 @@ export function renderDeck(root, rerender) {
     countLine, resBox);
   // 行のどこを押しても足す（札は「＋版を足す」にチェックがあれば＋版）。ボタンは通常／＋を選んで足す
   function row(x) {
-    return h('div.res.clickable', {title: 'ここを押すとデッキに足します', onclick: () => tab === 'cards' ? add('cards', x, plusPref) : add(tab, x)},
+    // ドラッグして左のデッキへ落としても足す（1.17.4、利用者の要望）
+    return h('div.res.clickable', {title: 'ここを押すか、左のデッキへドラッグすると足します', draggable: true,
+      ondragstart: e => { e.dataTransfer.setData('application/x-sl-add', JSON.stringify({tab, id: x.id})); e.dataTransfer.setData('text/plain', x.name); e.dataTransfer.effectAllowed = 'copy'; },
+      onclick: () => tab === 'cards' ? add('cards', x, plusPref) : add(tab, x)},
       pic(tab, tab === 'cards' && plusPref && x.plusId ? x.plusId : x.id, x.name, 40),
       h('div.rn', {}, h('b', x.name), x.alias?.length ? h('small.alias', ' （' + x.alias.join('・') + '）') : null,
         h('small.meta', [x.custom ? '自作の札' : PLAN_NAME[x.plan] || '', x.rarity, x.idol].filter(Boolean).join('・')),
@@ -120,6 +123,11 @@ export function renderDeck(root, rerender) {
     resBox.replaceChildren(...res.map(row));
   }
   fill();
+  // 左のデッキの欄へのドロップ（右の一覧の行をドラッグ）
+  center.addEventListener('dragover', e => { if (!e.dataTransfer.types.includes('application/x-sl-add')) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; center.classList.add('dragover'); });
+  center.addEventListener('dragleave', e => { if (!center.contains(e.relatedTarget)) center.classList.remove('dragover'); });
+  center.addEventListener('drop', e => { const t = e.dataTransfer.getData('application/x-sl-add'); center.classList.remove('dragover'); if (!t) return; e.preventDefault();
+    const {tab: k, id} = JSON.parse(t); const x = list.find(y => y.id === id); if (x) k === 'cards' ? add('cards', x, plusPref) : add(k, x); });
   requestAnimationFrame(() => { resBox.scrollTop = resScroll; });
   resBox.addEventListener('scroll', () => { resScroll = resBox.scrollTop; });
 
