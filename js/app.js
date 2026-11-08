@@ -1,7 +1,7 @@
 // Solitaire Lab（内部の名前 Pallas）の入口：データを読み、タブで画面を切り替える
 import {openRestore, importAnswer} from './restore.js';
 import {loadAll, D, syncCustomCards, CONTACT} from './data.js';
-import {S, save, deck} from './store.js';
+import {S, save, deck, restoreTrees} from './store.js';
 import {h, closePop, popover} from './ui.js';
 import {copyReport} from './report.js';
 import {renderDeck} from './deck.js';
@@ -54,6 +54,6 @@ function render() {
 setRerender(render);
 // PC モード（serve.mjs --pc）：自分の PC のサーバーで開いたときだけ、計算を PC の Node で行う（1.16.0）
 if (['localhost', '127.0.0.1'].includes(location.hostname)) { try { const r = await fetch('/__pc/ping'); if (r.ok) globalThis.PC_MODE = await r.json(); } catch {} }
-try { await loadAll(); syncCustomCards(S.calcSettings); render(); }
+try { await loadAll(); syncCustomCards(S.calcSettings); await restoreTrees(); render(); }
 catch (e) { app.replaceChildren(h('div.panel', {}, h('h2', '読み込めませんでした'), h('pre', String(e.stack || e)),
   h('p', 'ファイルを直接開くと読み込めません。Web サーバー経由で開いてください（開発中はリポジトリの直下で node gui/serve.mjs）。'))); }

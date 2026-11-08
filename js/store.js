@@ -49,14 +49,33 @@ function migrateSave(s) {
   fix(s.phase); for (const h of s.history || []) fix(h.phase); fix(s.result?.phase);
 }
 
+// 大きい答えの方策の木は localStorage に入らないので、IndexedDB に別に残す（読み込み直しても「使った →」の案内を続けられる。1.17.10、利用者の報告「答えが押せない」）
+const IDB = 'aegis.trees';
+function idb() { return new Promise((ok, ng) => { try { const q = indexedDB.open(IDB, 1); q.onupgradeneeded = () => q.result.createObjectStore('t'); q.onsuccess = () => ok(q.result); q.onerror = () => ng(q.error); } catch (e) { ng(e); } }); }
+async function idbPut(v) { try { const db = await idb(); await new Promise((ok, ng) => { const x = db.transaction('t', 'readwrite'); x.objectStore('t').put(v, 'result'); x.oncomplete = ok; x.onerror = () => ng(x.error); }); db.close(); return true; } catch { return false; } }
+async function idbGet() { try { const db = await idb(); const v = await new Promise((ok, ng) => { const q = db.transaction('t').objectStore('t').get('result'); q.onsuccess = () => ok(q.result); q.onerror = () => ng(q.error); }); db.close(); return v; } catch { return null; } }
+// 起動のとき：木を除いて保存した答えなら、IndexedDB の木を戻す（同じ答え＝at が同じときだけ）
+export async function restoreTrees() {
+  const R = S.result; if (!R?.treeDropped && !R?.alt?.treeDropped) return false;
+  const v = await idbGet(); if (!v || v.at !== R.at) return false;
+  if (v.tree) { R.tree = v.tree; R.treeDropped = false; }
+  if (v.alt && R.alt) { R.alt.tree = v.alt; R.alt.treeDropped = false; }
+  return true;
+}
+let lastIdbAt = null;
 let t = null;
 // 保存。方策の木が大きすぎて入らないときは、木を除いて保存する（結果の数値は残る。プレイの案内は計算し直しが要る）
 export function save() { clearTimeout(t); t = setTimeout(() => {
   // 答え（主・95% の両方）の方策の木が大きいときは、木を除いて保存する。それでも入らなければ、前の局面の記録を減らす
   const slim = r => r && {...r, tree: null, treeDropped: !!(r.tree || r.treeDropped), alt: r.alt && {...r.alt, tree: null, treeDropped: !!(r.alt.tree || r.alt.treeDropped)}};
   let s = JSON.stringify(S);
-  if (s.length > 3e6 && S.result) s = JSON.stringify({...S, result: slim(S.result)});
+  const LIM = globalThis.SL_SAVE_LIMIT ?? 3e6;   // 試験のときだけ小さくできる
+  const big = s.length > LIM && !!S.result;
+  if (big) s = JSON.stringify({...S, result: slim(S.result)});
+  // 木を除いたときは、木を IndexedDB に残す（同じ答えは1回だけ書く）
+  if (!big) lastIdbAt = null; else if (lastIdbAt !== S.result.at && (S.result.tree || S.result.alt?.tree)) { lastIdbAt = S.result.at; idbPut({at: S.result.at, tree: S.result.tree || null, alt: S.result.alt?.tree || null}); }
   try { localStorage.setItem(KEY, s); } catch {
+    if (S.result && lastIdbAt !== S.result.at && (S.result.tree || S.result.alt?.tree)) { lastIdbAt = S.result.at; idbPut({at: S.result.at, tree: S.result.tree || null, alt: S.result.alt?.tree || null}); }
     try { localStorage.setItem(KEY, JSON.stringify({...S, result: slim(S.result), history: S.history.slice(0, 5)})); } catch {}
   }
 }, 150); }
