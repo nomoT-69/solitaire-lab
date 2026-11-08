@@ -35,7 +35,7 @@ function maxTracker(model,opts){
   const mopts={...opts,criterion:'max'};
   const pick=r=>{const fr=r.frontierRaw;if(fr&&fr.length&&r.extract&&!r.compacted){let b=null;for(const v of fr)if(betterBest(v,b,mopts))b=v;return b;}return r.bestRaw??null;};
   return {on,
-    offer(r,label){if(!on||r.status!=='complete')return;const v=pick(r);if(!v||!betterBest(v,mx?.bestRaw,mopts))return;
+    offer(r,label){if(!on||r.status!=='complete')return;const v=pick(r);if(!v||!(betterBest(v,mx?.bestRaw,mopts)||lostSwap(mopts,label,{bestRaw:v},mx)))return;
       let dag=null;try{dag=r.compacted?r.extract():r.extract(v);}catch(e){return;}if(!dag)return;
       const sm=r.summarize?r.summarize(v):summarizeV(v);mx={best:sm,bestRaw:v,solver:label,extract:()=>dag};},
     attach(r){return on?{...r,maxResult:mx}:r;}};
@@ -45,7 +45,11 @@ function maxTracker(model,opts){
 // α を決めた比較では、見込みの段は「達成率最大」（辞書式、速い）で解く（α の前線を見込みの順で作ると重く、GUI の局面でメモリ不足になった。DESIGN 22.4）
 // 段の順（G2 2026-11-05、利用者の決定。案 B）：熱意の見込みの段をすべての上限で先に試し、今の順（根からの得点）の段は後にまとめる（opts.capOrder:'interleave' で前の順：上限ごとに見込み→今の順）。
 // GUI の局面で、E[D] 41/108 に届くのが 337秒 → 110秒（厳密の早めの見切りと合わせて。DESIGN 22.23）
-const capStages=(opts,list)=>{const cs=list.map(c=>typeof c==='number'?c:c.cap);
+// ドリンクを後回しにする段（opts.drinkStages、試作・測定用。2026-11-08、利用者の決定「両方試して良いほうを残す」）：見込みの段の後に、使ったドリンクの数だけ見込みを下げる段
+// （heatOpts に drink:opts.drinkStageWeight（既定1）を足す）を同じ上限で足す。段ごとに良い方が残るので答えは悪くならない（時間は増える）。
+const withDrinkStages=(opts,stages)=>opts.drinkStages?stages.flatMap(st=>st.heat&&!st.drink?[st,{...st,drink:true}]:[st]):stages;
+const capStages=(opts,list)=>withDrinkStages(opts,capStages0(opts,list));
+const capStages0=(opts,list)=>{const cs=list.map(c=>typeof c==='number'?c:c.cap);
   if(opts.capHeat===false)return list.map(c=>({cap:typeof c==='number'?c:c.cap,heat:!!c.heat}));
   if(opts.capOrder==='interleave')return cs.flatMap(cap=>[{cap,heat:true},{cap,heat:false}]);
   return [...cs.map(cap=>({cap,heat:true})),...cs.map(cap=>({cap,heat:false}))];};
@@ -56,19 +60,26 @@ const growthLimitOf=(opts,maxStates)=>{if(opts.growthStop===false)return undefin
 // α の前線の間引き（G2 2026-11-05、利用者の決定。DESIGN 22.26）：α を決めた比較の層の上限の段（暫定）は、前線を ε（既定 1e-3、opts.capFrontierEps。0 で間引かない）で間引く。
 // 間引いた段の答えは近似（最適との差は未証明）で、上限に当たらずに解き終えても最適（証明済み）にはしない（Tomahawk の optimalityProven が ε も見る。外部レビュー2の項目12）。
 // 残る点は実際の方策の正確な値。各局面で達成率が最大の点は必ず残るので、α=100% の答えは変わらない。届く最大の基準（辞書式）には関係しない。厳密に解く段では使わない
-const capOpts=(model,opts,st)=>({layerCap:st.cap,capScore:st.heat?heatCapScore(model,opts.capHeatLambda??8,1,opts.heatOpts||{}):undefined,
+const capOpts=(model,opts,st)=>({layerCap:st.cap,capScore:st.heat?heatCapScore(model,opts.capHeatLambda??8,1,{...(opts.heatOpts||{}),...(st.drink?{drink:opts.drinkStageWeight??1}:{})}):undefined,
   ...(opts.criterion!=='max'&&(opts.capFrontierEps??1e-3)?{frontierEps:opts.capFrontierEps??1e-3}:{})});
 // α のときの見込みの段：前は「達成率最大」で解いた（α の前線が重かったため。22.4）。間引きで軽くなったので α の前線で解く。opts.alphaHeatMax:true で前の動き
 const heatAsMax=(opts,st,crit)=>st.heat&&!crit&&opts.alphaHeatMax===true;
 // opts.beamHeat（G2 2026-11-04、設計案の検証2。利用者の決定で既定 8、0 で前の順）：暫定の答えを作る Javelin の上位1〜3手の探索で、手の順に熱意の見込み（λ）を使う。厳密な Javelin は今の順のまま
 // opts.beamMaxMemo（既定 10万）：上位1〜3手の探索で覚える局面の数の上限。1局面 4〜22KB なので、ブラウザ（メモリを測れない）でも約0.4〜2GB で止まる（上位1手は1〜3万局面で終わる）
-const capLabel=st=>st.cap+(st.heat?'・熱意の見込み':'');
+const capLabel=st=>st.cap+(st.heat?'・熱意の見込み':'')+(st.drink?'・ドリンク後回し':'');
 // 見込みの既定（G2 2026-11-06、利用者の決定「重み1を既定に」。DESIGN 22.43）：保留した有効な札（眠気以外）の分を見込みから引く（heatOpts.hold=1）。
 // 層の上限の段・Javelin の手の順・点数を伸ばすの段に効く。opts.heatOpts:{} で前の見込み
 export const AEGIS_HEAT_DEFAULT=Object.freeze({hold:1});
+// 届かない局面の打ち方（opts.playOnLost、2026-11-08、利用者の依頼・案 A）：Tomahawk の方策は届かない局面でも札だけで期待最終点の最大を打つ。Javelin の方策は止めるので、
+//  ・素早い Javelin の答えは、達成率が1でなければ（届かない局面があるかもしれない）最終にしない
+//  ・同じ値なら、Javelin の暫定を Tomahawk の答えに置き換える（方策の案内だけが違う）
+const lostSwap=(opts,label,r,prev)=>!!opts.playOnLost&&!!prev&&String(prev.solver??'').startsWith('Javelin')&&!String(label).startsWith('Javelin')&&!betterBest(prev.bestRaw,r.bestRaw,opts);
+const lostKeep=(opts,j)=>!opts.playOnLost||!j.bestRaw||(j.bestRaw.p.n===j.bestRaw.p.d);
 const withHeatDefault=opts=>opts.heatOpts===undefined?{...opts,heatOpts:AEGIS_HEAT_DEFAULT}:opts;
+// ドリンクを持たない局面では、ドリンクを後回しにする段を飛ばす（同じ見込みの段の繰り返しになるため）
+const withDrinkCheck=(model,opts)=>opts.drinkStages&&!(model.engine?.root?.drinks?.length)?{...opts,drinkStages:false}:opts;
 export function solveAegis(model,opts={}){
-  opts=withHeatDefault(opts);
+  opts=withHeatDefault(opts);opts=withDrinkCheck(model,opts);
   // 最後の試験の「点数を伸ばす」（opts.beyondGoal、G2 2026-11-06、利用者の決定。GUI のチェック。既定は「目標点まででよい」＝今の計算）：
   // 届く確率 P を最大に、同じなら届いた先も含めた期待最終点を最大に（talos/beyond-goal.mjs）。order・criterion・alpha・alsoMax は使わない
   if(opts.beyondGoal)return solveBeyondGoal(model,opts);
@@ -80,7 +91,7 @@ export function solveAegis(model,opts={}){
   const canJavelin=!opts.noJavelin&&javelinSupports(opts).ok;   // opts.noJavelin（測定用、レビューの項目11、2026-11-05）：Javelin を使わない。Javelin を使うかは1か所で決め、厳密な試しと暫定の答えの両方で使う（レビュー R2）
   if(canJavelin){
     const j=solveJavelin(model,{...opts,maxMs:Math.min(quickMs,left())});trials.push({solver:'Javelin',status:j.status,ms:j.stats.elapsedMs});
-    if(j.status==='complete'){j.solver='Javelin';j.trials=trials;
+    if(j.status==='complete'&&lostKeep(opts,j)){j.solver='Javelin';j.trials=trials;
       // 最大の答えも並べる：素早い Javelin で解けた局面は、達成率最大の基準でも Javelin で解く（解けなければ maxResult は null）
       if(opts.alsoMax&&!crit){const M=maxTracker(model,opts);const jm=solveJavelin(model,{...opts,criterion:'max',maxMs:Math.max(1,Math.min(quickMs,left()))});M.offer(jm,'Javelin（達成率最大）');return M.attach(j);}
       return j;}}
@@ -88,7 +99,7 @@ export function solveAegis(model,opts={}){
   const key=r=>r.bestRaw;let prov=null;const MX=maxTracker(model,opts);
   const better=(a,b)=>!b||betterBest(key(a),key(b),opts);   // 自然さまで比べる（レビュー JA1）
   const offer=(r,label)=>{trials.push({solver:label,status:r.status,ms:r.stats?.elapsedMs,best:r.best&&[r.best.p,r.best.d,r.best.a]});MX.offer(r,label);
-    if(r.status==='complete'&&r.best&&better(r,prov)){prov=compactProv(model,opts,r);prov.solver=label;if(onUpdate)onUpdate(finish(prov,false));}
+    if(r.status==='complete'&&r.best&&(better(r,prov)||lostSwap(opts,label,r,prov))){prov=compactProv(model,opts,r);prov.solver=label;if(onUpdate)onUpdate(finish(prov,false));}
     else if(MX.on&&prov&&onUpdate&&r.status==='complete')onUpdate(finish(prov,false));};   // 最大の答えだけが良くなったときも知らせる
   const finish=(r,done)=>MX.attach({...r,status:'provisional',kind:'provisional',optimalityProven:false,meetsAlpha:meets(opts,r),kindLabel:'暫定（検証済みの方策、最適は未証明）',trials:trials.slice(),final:done,
     proven:r.bestRaw&&r.bestRaw.p.n===r.bestRaw.p.d?'達成率 100% は最大（証明済み）。E[D]・E[A] の最適は未証明':'証明できた範囲なし（暫定の達成率が最大かは未証明）'});
@@ -135,7 +146,7 @@ export function solveAegis(model,opts={}){
 // 状態数（maxStates、累計）やメモリ（opts.maxHeapMiB）の上限を超えたら、厳密な計算の続きは捨てる（メモリを返す）。
 // 続けても良くならないときは resumable:false と、その理由（resumeReason）を返す。
 export function createAegisJob(model,opts={}){
-  opts=withHeatDefault(opts);
+  opts=withHeatDefault(opts);opts=withDrinkCheck(model,opts);
   // 点数を伸ばす（opts.beyondGoal）：続きからの計算はしない（run のたびに予算内で解く）
   if(opts.beyondGoal)return {run:(o={})=>solveBeyondGoal(model,{...opts,...o}),follow:()=>null,retarget:()=>null,dispose(){},get state(){return {calls:0,final:false,canFollow:false};}};
   const crit=opts.criterion==='max';const canJavelin=!opts.noJavelin&&javelinSupports(opts).ok;
@@ -160,11 +171,11 @@ export function createAegisJob(model,opts={}){
     const done=()=>{J.totalMs+=Date.now()-started;return out(J.final);};
     if(J.final){J.totalMs+=Date.now()-started;return out(J.final);}
     const offer=(r,label)=>{J.trials.push({solver:label,status:r.status,ms:r.stats?.elapsedMs,best:r.best&&[r.best.p,r.best.d,r.best.a]});MX.offer(r,label);
-      if(r.status==='complete'&&r.best&&better(r,J.prov)){J.prov=compactProv(model,opts,r);J.prov.solver=label;if(onUpdate)onUpdate(out(finish(J.prov)));}
+      if(r.status==='complete'&&r.best&&(better(r,J.prov)||lostSwap(opts,label,r,J.prov))){J.prov=compactProv(model,opts,r);J.prov.solver=label;if(onUpdate)onUpdate(out(finish(J.prov)));}
       else if(MX.on&&J.prov&&onUpdate&&r.status==='complete')onUpdate(out(finish(J.prov)));};
     // 1) 素早い Javelin（最初の run だけ）
     if(!J.quickDone){J.quickDone=true;const j=solveJavelin(model,{...opts,maxMs:Math.min(opts.quickMs??2000,left())});J.trials.push({solver:'Javelin',status:j.status,ms:j.stats.elapsedMs});
-      if(j.status==='complete'){j.solver='Javelin';j.trials=J.trials.slice();J.final=j;
+      if(j.status==='complete'&&lostKeep(opts,j)){j.solver='Javelin';j.trials=J.trials.slice();J.final=j;
         if(MX.on){const jm=solveJavelin(model,{...opts,criterion:'max',maxMs:Math.max(1,Math.min(opts.quickMs??2000,left()))});MX.offer(jm,'Javelin（達成率最大）');}
         return done();}}
     // 2) 安い暫定：Javelin の上位1〜3手（最初の run だけ）と、Tomahawk の層の上限5千（続きから）

@@ -256,7 +256,7 @@ export function solveTomahawk(model,opts){
   const actFlag=G0?.actFlag??new Grow(Uint8Array),brStart=G0?.brStart??new Grow(Int32Array);
   const brChild=G0?.brChild??new Grow(Int32Array),brGain=G0?.brGain??new Grow(Uint32Array),brProb=G0?.brProb??new Grow(Int32Array),pathGain=G0?.pathGain??new Grow(Uint32Array),dropF=G0?.dropF??new Grow(Uint8Array);
   if(R0&&!G0)R0.g={nodeK,minNeed,actStart,actFlag,brStart,brChild,brGain,brProb,pathGain,dropF};
-  let curves=null,maxGain=null;
+  let curves=null,maxGain=null,LOST=null;   // LOST：届かない局面の打ち方（opts.playOnLost）の覚え
   const layerCap=opts.layerCap||0;let dropped=R0?.dropped??0;epsDropped=R0?.epsDropped??0;
   let segsOwn=R0?.segsOwn??0;   // 見積もりのメモリ用：共有の「止める」曲線（LEAF）を除いた、本当にメモリを使う区間の数（続きからでも累計。2026-11-04）
   let transitions=R0?.transitions??0,invarianceChecks=R0?.invarianceChecks??0,horizonCut=R0?.horizonCut??0,peakFrontier=0,segmentsTotal=0,maxLayer=R0?.maxLayer??0,cutNodes=0;
@@ -516,6 +516,13 @@ export function solveTomahawk(model,opts){
     // 方策の復元。あわせて、各分かれ目で「選んだ手と同じ評価（比べる順の値と、自然さの指標をつけた場合は指標まで、すべて同じ）になる別の手」を数える。
     // 返り値の sameEval：root＝ルートで同じ評価になる手の数（選んだ手を含む。1 なら別の手順はない）、altNodes＝同じ評価の別の手がある分かれ目の数、
     // decisionNodes＝分かれ目（手を選ぶ局面）の数。止める（何もしない）が同じ評価になる場合も1つの手として数える。
+    // 届かない局面の打ち方（opts.playOnLost）：グラフの上で、札だけ（ドリンクを使わない）の期待得点の最大と、その手（番号。-1＝止める）。初めて要るときに1回だけ計算する
+    function lostPlay(){if(LOST)return LOST;const N=nodeK.n,ev=new Float64Array(N),ai=new Int32Array(N).fill(-1),P=probs.map(toNum);
+      for(let v=N-1;v>=0;v--){let be=0,ba=-1;const a0=actStart.a[v];
+        for(let a=a0;a<actStart.a[v+1];a++){if(actFlag.a[a]&1)continue;let e=0;for(let bi=brStart.a[a];bi<brStart.a[a+1];bi++){const c=brChild.a[bi];e+=P[brProb.a[bi]]*(brGain.a[bi]+(c>=0?ev[c]:0));}
+          if(e>be+1e-9){be=e;ba=a-a0;}}
+        ev[v]=be;ai[v]=ba;}
+      return LOST={ev,ai};}
     function extract(target=best){
       if(!target||!curves)return null;const out=[];let altNodes=0,decisionNodes=0,rootTies=null;
       // 同じ局面（グラフの番号・必要点・目指す点が同じ）は1つの節にまとめる（2026-11-07、GUI の担当の報告：VEIL の局面で、7,525局面の方策に56万節の木を作り、
@@ -542,7 +549,14 @@ export function solveTomahawk(model,opts){
         for(let ai=0;ai<acts.length;ai++){const h=hitOf(s,id,n,v,acts[ai],ai);if(h){ties++;if(!chosen&&!same(v,STOP))chosen={...h,act:acts[ai]};}}
         if(acts.length){decisionNodes++;if(ties>1)altNodes++;}
         if(isRoot)rootTies=ties;
-        if(same(v,STOP)){out.push({id:out.length,key:model.v6key(s),choice:null,edges:[],sameEval:ties});memo.set(mk,out.length-1);return out.length-1;}
+        if(same(v,STOP)){
+          // opts.playOnLost（2026-11-08、利用者の依頼、案 A）：届かない局面（ここから先の達成率が0）でも止めずに、札だけ（ドリンクは使わない）で期待最終点が一番高くなる手を打つ。
+          // 達成率・ドリンク・手数の答え（best）は今のまま（止める方策の値）。方策の案内だけが続く（手数は答えより増える）
+          const L=opts.playOnLost&&acts.length?lostPlay():null;const li=L?L.ai[id]:-1;
+          if(li>=0){const act=acts[li],br=model.branches(s,act),b0=brStart.a[a0+li];if(brStart.a[a0+li+1]-b0!==br.length)throw Error('EXTRACT_GRAPH');
+            const node={id:out.length,key:model.v6key(s),choice:act.raw??act,edges:null,sameEval:ties,lost:true};out.push(node);memo.set(mk,node.id);
+            node.edges=br.map((b,i)=>({index:b.index,p:b.pFloat,key:model.v6key(b.s),drawn:[],next:build(b.s,brChild.a[b0+i],STOP,false)}));return node.id;}
+          out.push({id:out.length,key:model.v6key(s),choice:null,edges:[],sameEval:ties});memo.set(mk,out.length-1);return out.length-1;}
         if(!chosen)throw Error('EXTRACT_NO_MATCH');
         const {hit,br,b0,act}=chosen;
         const picks=[];for(let x=hit.picks;x;x=x.prev)picks.push(x.c);picks.reverse();

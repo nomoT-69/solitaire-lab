@@ -37,7 +37,7 @@ const cells = r => {
   if (r.type === 'end') return {step: '', act: r.n.cut ? 'ほかの引き（この先は省略）' : r.n.reached ? `終わり：目標に届いた` : '終わり：目標に届かない', drawn: '', p: '', path: pct(r.pathP),
     score: fmt(r.n.st?.score ?? r.n.score), heat: '', extra: '', factor: '', bonus: '', stance: '', uses: '', drinks: '', future: r.n.cut ? pct(r.n.p) : r.n.reached ? '100%' : '0%'};
   const a = r.n.st, b = r.c.st;
-  return {step: String(r.step), act: r.n.act, drawn: r.e.drawn.length ? r.e.drawn.map(x => x.name).join('・') : (r.branching ? '（ドロー札なし）' : ''),
+  return {step: String(r.step), act: r.n.act + (r.n.lost ? '（届かない：点を伸ばす手）' : ''), drawn: r.e.drawn.length ? r.e.drawn.map(x => x.name).join('・') : (r.branching ? '（ドロー札なし）' : ''),
     p: r.branching ? `${r.e.pText}（${pct(r.e.p)}）` : '', path: pct(r.pathP),
     score: delta(a.score, b.score), heat: delta(a.heat, b.heat), extra: delta(a.extra, b.extra),
     factor: a.factor === b.factor ? factorText(b.factor) : `${sign(b.factor - a.factor)}% → ${factorText(b.factor)}`,

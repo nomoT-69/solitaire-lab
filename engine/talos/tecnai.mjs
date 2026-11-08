@@ -49,12 +49,13 @@ const directStaminaCost=card=>(card.cost||[]).some(x=>x.kind==='action'&&x.op===
 // 2026-11-05 に直した：前は正の数だけだった（利用者の 11-04 の確認「減らない」は、実ゲームで確かめ直して「減る」に訂正された）。全力値だけがコストの札は使わない
 const positiveCost=card=>(card.cost||[]).some(x=>x.kind==='action'&&(x.lhs==='stamina'||x.lhs==='cost'));
 const LATER=new Set(['turn','startOfTurn','beforeStartOfTurn','afterStartOfTurn','everyTurn','startOfStage','afterStartOfStage','prestage','turnSkipped']);
-const IGNORED_FIELDS=new Set(['genki','fixedGenki','stamina','fixedStamina','fullPowerCharge','halfCostTurns','doubleCostTurns','costReduction','costIncrease','nullifyCostCards','nullifyCostActiveCards','cost','nullifyGenkiTurns','doubleBuffCostTurns']);
+const IGNORED_FIELDS=new Set(['enthusiasmExtensionTurns',   // 熱意の延長ターン（結果としての今のターン終了時。次のターンの話なので省く。2026-11-08、利用者の決定）
+  'genki','fixedGenki','stamina','fixedStamina','fullPowerCharge','halfCostTurns','doubleCostTurns','costReduction','costIncrease','nullifyCostCards','nullifyCostActiveCards','cost','nullifyGenkiTurns','doubleBuffCostTurns']);
 const IGNORED_GROWTH=new Set(['g.cost','g.typedCost','g.genki','g.fullPowerCharge','g.halfCostTurns']);
 // 累計の全力値を入力しないときの暫定値（利用者の決定 2026-11-05：ブースト・ラッシュなどの累計は暫定7で計算し、注意書きを出す）
 export const CFP_PROVISIONAL=7;
 const IGNORED_CALLS=new Set(['setFullPowerChargeBuff','setFullPowerEffectBuff','decreaseFullPowerCharge']);
-const CALLS=new Set(['setStance','drawCard','exchangeHand','addCardToDeck','holdSelected','moveRandomToHand','removeRandom','useRandomCardFree','addRandomUpgradedSSRCardToHand',
+const CALLS=new Set(['setStance','drawCard','exchangeHand','addCardToDeck','holdSelected','holdSelectedUpto','holdThisCard','moveRandomToHand','removeRandom','useRandomCardFree','addRandomUpgradedSSRCardToHand',
   'setScoreBuff','setEnthusiasmBuff','setEnthusiasmBonus','setStrengthEffectBuff',...IGNORED_CALLS]);
 const ASSIGN=new Set(['score','cardUsesRemaining','enthusiasm','enthusiasmMultiplier','effectCounter','scoreTimes']);
 // 読むと状態の数が要る変数 → 状態の項目（6.）
@@ -67,7 +68,7 @@ class St{
   constructor(o){this.hand=o.hand;this.disc=o.disc;this.rem=o.rem;this.held=o.held;this.drinks=o.drinks;this.deck=o.deck;this.effs=o.effs;this.ce=o.ce;
     this.uses=o.uses;this.st=o.st;this.prev=o.prev;this.heat=o.heat;this.extra=o.extra;this.factor=o.factor;this.bonus=o.bonus;this.strB=o.strB;
     this.pT=o.pT;this.sT=o.sT;this.lT=o.lT;this.dirT=o.dirT;this.nc=o.nc??0;this.nco=o.nco??0;this.cm=o.cm??0;this.fp=o.fp??0;this.cfp=o.cfp??0;this.fpb=o.fpb??0;this.cardsUsed=o.cardsUsed;this.turnUsed=o.turnUsed;this.done=o.done;this.em=o.em;this.sTimes=o.sTimes;this.usedTy=o.usedTy;
-    this.score=o.score;this.key=null;this.hits=o.hits;}   // hits：表示用の内訳（explain のときだけ使う。ふだんは undefined）
+    this.score=o.score;this.key=null;this.hits=o.hits;this.hThis=o.hThis??0;}   // hThis：使っている札を保留へ（holdThisCard。札を使い終えるときに消す。キーには入らない）   // hits：表示用の内訳（explain のときだけ使う。ふだんは undefined）
 }
 const clone=s=>new St(s);
 
@@ -611,7 +612,9 @@ export function createEngine(data,setup,options={}){
           for(let i=0;i<n;i++){if(cur.length===1)cur=each(cur,drawOne);else cur=merge(each(cur,drawOne));}return cur;}
         case 'exchangeHand':return each(list,t=>{const n=t.hand.length;t.disc=msMerge(t.disc,t.hand);t.hand='';let cur=one(t);for(let i=0;i<n;i++)cur=cur.length===1?each(cur,drawOne):mergeZones(each(cur,drawOne));return cur;});
         case 'addCardToDeck':{const ty=typeOf(arg(0));return each(list,t=>{t.deck=insertB(t.deck,ty);return one(t);});}
-        case 'holdSelected':return each(list,s=>holdSelected(s,ctx));
+        case 'holdSelected':case 'holdSelectedUpto':return each(list,s=>holdSelected(s,ctx));   // 最大 n 枚（holdSelectedUpto）は、選んだ札（0〜n 枚）を順に保留へ（2026-11-08、本領発揮）
+        // この札を保留へ（2026-11-08、羽ばたけ！・スパート・積み重ね・トレンドリーダー。利用者の決定：保留した札はこのターン中は使えない）：使い終えるとき捨て札・除外の代わりに保留へ
+        case 'holdThisCard':return each(list,t=>{if(ctx.inCard&&t.usedTy>=0)t.hThis=1;return one(t);});
         case 'moveRandomToHand':return merge(each(list,s=>s.hand.length>=cfg.cap?one(s):pickRandom(s,a.target,['deck','discard','removed'],(t,ty)=>{t.hand=msAdd(t.hand,ty);return one(t);})));
         case 'removeRandom':return merge(each(list,s=>pickRandom(s,a.target,['deck','discard','hand'],(t,ty)=>{t.rem=msAdd(t.rem,ty);return one(t);})));
         case 'useRandomCardFree':return merge(each(list,s=>pickRandom(s,a.target,['deck','discard','removed','hand'],(t,ty)=>useCard(one(t),ty,{free:true}))));
@@ -665,6 +668,8 @@ export function createEngine(data,setup,options={}){
   }
   // 成長（engine.mjs の growTargets と同じ）
   function growTargets(list,target,body,ctx){
+    // 保留の札だけへの成長（本領発揮の target:held）：保留した札はこのターン中は使えないので省く（2026-11-08、利用者の決定。状態を増やさない）
+    if(target?.t==='id'&&target.name==='held')return list;
     const deltas={score:0,scoreTimes:0,typedCost:0};
     for(const x of body){if(x.kind!=='action')throw Error('成長の書き方が未対応');
       if(K.fp&&(x.lhs==='g.fullPowerCharge'||x.lhs==='g.typedCost')&&fpGrowthHits(x.lhs,target,ctx))throw Error('使っている途中の全力値・コストの成長（'+x.lhs+'）は未対応（全力値の札に当たる）');
@@ -718,6 +723,7 @@ export function createEngine(data,setup,options={}){
   }
   function holdSelected(s,ctx){
     const sel=ctx.select;if(!sel){if(ctx.noSelect)return one(s);throw Error('保留する札が選ばれていません');}   // noSelect：選べる札がなかった（何も保留しない）
+    if(sel.multi){let t=s;for(const x of sel.multi)t=holdSelected(t,{...ctx,select:x})[0].s;return one(t);}   // 最大 n 枚：選んだ札を順に（0枚なら何もしない）
     const t=s;
     if(sel.from==='discard')t.disc=msDel(t.disc,sel.ty);
     else if(sel.from==='hand')t.hand=msDel(t.hand,sel.ty);
@@ -743,7 +749,7 @@ export function createEngine(data,setup,options={}){
   // 選択の行動：効果の最初、または条件つきの入れ子（phase・target なし）の最初にあるとき（ノンストップの「if:… { holdSelected[hand] }」。2026-11-04 利用者の決定）。
   // 入れ子のときは {target, name, cond}（cond は選ぶかどうかの条件。合法手を作るとき、使う前の状態で判定する）
   function findSelect(items,name){const isSel=x=>x.kind==='action'&&x.op==='call'&&/Selected/.test(x.name);const i=items.findIndex(isSel);
-    if(i>=0){if(i>0)throw Error('選択の行動が最初にない札は未対応: '+name);if(items[i].name!=='holdSelected')throw Error('未対応の選択: '+items[i].name);return items[i];}
+    if(i>=0){if(i>0)throw Error('選択の行動が最初にない札は未対応: '+name);if(items[i].name!=='holdSelected'&&items[i].name!=='holdSelectedUpto')throw Error('未対応の選択: '+items[i].name);return items[i];}
     for(const x of items){if(x.kind!=='effect'||x.phase||x.target||!x.cond)continue;const j=(x.body||[]).findIndex(isSel);if(j<0)continue;
       if(j>0)throw Error('選択の行動が最初にない札は未対応: '+name);if(x.body[j].name!=='holdSelected')throw Error('未対応の選択: '+x.body[j].name);return {target:x.body[j].target,name:x.body[j].name,cond:x.cond};}
     return null;}
@@ -763,7 +769,7 @@ export function createEngine(data,setup,options={}){
     cur=each(cur,t=>{t.em=1;t.sTimes=types[ty].g.scoreTimes;return runItems(one(t),card.actions,ns?clone(t):t,pctx);});
     // afterCardUsed の条件は、捨て札か除外に置く前の状態で判定する（Talos と同じ）
     cur=each(cur,t=>{const fin=t.usedTy;t.usedTy=-1;t.em=1;t.sTimes=0;
-      t.cardsUsed++;t.turnUsed++;const pre=t.effs===EMPTY&&t.ce===EMPTY?null:clone(t);if(card.once)t.rem=msAdd(t.rem,fin);else t.disc=msAdd(t.disc,fin);return trigger(one(t),'afterCardUsed',ctx,pre);});
+      t.cardsUsed++;t.turnUsed++;const pre=t.effs===EMPTY&&t.ce===EMPTY?null:clone(t);if(t.hThis){t.hThis=0;t.held+=C(BASE+fin);while(t.held.length>2){const old=t.held.charCodeAt(0)-BASE;t.held=t.held.slice(1);t.disc=msAdd(t.disc,old);}}else if(card.once)t.rem=msAdd(t.rem,fin);else t.disc=msAdd(t.disc,fin);return trigger(one(t),'afterCardUsed',ctx,pre);});
     if(!free)cur=each(cur,t=>t.uses<1&&!t.done?endTurn(one(t)):one(t));
     return cur;
   }
@@ -800,6 +806,13 @@ export function createEngine(data,setup,options={}){
       msRuns(s.hand,ty=>{if(!usableCard(s,ty))return;if(K.fp&&s.fp<fpCost(ty))return;const c=types[ty].card;const sel=selOf(ty);
         // 条件つきの選択は、使う前の状態で条件を判定する。手札から選ぶときは、使う札そのもの（1枚）を除く（効果の前に手札から出ている）
         if(sel&&(!sel.cond||exprFn(sel.cond)(s,{used:ty,phase:null,parent:null}))){const opts=selectable({disc:s.disc,hand:msDel(s.hand,ty),deck:s.deck},sel.target);
+          // 最大 n 枚を選んで保留（holdSelectedUpto、本領発揮。2026-11-08）：0〜n 枚の選び方（同じ種類・同じ場所は1通り、枚数が足りれば同じ札を2枚も）をすべて手にする
+          if(sel.name==='holdSelectedUpto'){const nMax=sel.args?.[0]?.v??1;if(nMax>2)throw Error('3枚以上を選ぶ保留は未対応: '+c.name);
+            const cnt=x=>x.from==='deck'?msCount(beliefs[s.deck].content,x.ty):x.from==='discard'?msCount(s.disc,x.ty):msCount(msDel(s.hand,ty),x.ty);
+            out.push({type:'card',ty,id:c.id,name:c.name,noSelect:true});
+            for(let i=0;i<opts.length;i++){out.push({type:'card',ty,id:c.id,name:c.name,select:{multi:[opts[i]]}});
+              if(nMax>=2)for(let j=i;j<opts.length;j++){if(j===i&&cnt(opts[i])<2)continue;out.push({type:'card',ty,id:c.id,name:c.name,select:{multi:[opts[i],opts[j]]}});}}
+            return;}
           if(opts.length)for(const x of opts)out.push({type:'card',ty,id:c.id,name:c.name,select:x});else out.push({type:'card',ty,id:c.id,name:c.name,noSelect:true});}
         else out.push({type:'card',ty,id:c.id,name:c.name});});
       const capped=cfg.drinkCap!==null&&cfg.drinkBase-s.drinks.length>=cfg.drinkCap;
@@ -902,7 +915,7 @@ export function createEngine(data,setup,options={}){
   function trimCaches(){for(const B of beliefs){B.draw=null;B.many=null;B.hold=null;B.ins=new Map();}PH_CACHE.clear();beliefCanonCache.clear();}
   // 支配のキー：熱意を除いたキー（heatMono のときだけ。熱意が多いほど良い）
   const domKey=s=>{const h=s.heat;s.heat=0;const k=key(s);s.heat=h;return k;};
-  return {root,choices,transition,explain,key:s=>s.key,types,cfg,defs,withScore,deckOrders,beliefs,canon,fromCanon,canonAct,trimCaches,
+  return {root,choices,transition,explain,drinkDef:id=>data.drinks.get(id),key:s=>s.key,types,cfg,defs,withScore,deckOrders,beliefs,canon,fromCanon,canonAct,trimCaches,
     heatMonotone:()=>heatMono,domKey,domVal:s=>s.heat,
     effsOf:s=>effTab[s.effs],ceOf:s=>effTab[s.ce],extraOf:s=>[s.strB,s.cardsUsed,s.turnUsed],isDead:deadRec,stats:()=>({beliefs:beliefs.length,effLists:effTab.length,types:types.length,keyFields:Object.keys(K).filter(f=>K[f])}),
     describe:s=>({hand:ms(s.hand),discard:ms(s.disc),removed:ms(s.rem),held:[...s.held].map(c=>name(c.charCodeAt(0)-BASE)),
@@ -911,7 +924,9 @@ export function createEngine(data,setup,options={}){
       drinks:msIds(s.drinks),times:{preservation:s.pT,strength:s.sT,leisure:s.lT,direct:s.dirT},...(K.nc?{...(s.nco?{nullifyCostCards:s.nco+s.nc,nullifyCostCardsCarriedFirst:true}:{nullifyCostCards:s.nc}),...(s.cm?{halfCostTurns:s.cm&CM.hc?1:0,doubleCostTurns:s.cm&CM.dc?1:0,costReduction:CM.crOf(s.cm),costIncrease:CM.ciOf(s.cm)}:{})}:{}),...(K.fp?{fullPowerCharge:s.fp,cumulativeFullPowerCharge:s.cfp,fullPowerChargeBuff:s.fpb/100}:{})}),
     // GUI の入力欄（G2 2026-11-05）：全力値を数える局面なら「今の全力値」、累計を読む札があれば「累計の全力値」を出す
     inputs:{fullPowerCharge:K.fp,cumulativeFullPowerCharge:cfpRead},
-    notes:cfpProvisional?['累計の全力値は入力がないため暫定 '+CFP_PROVISIONAL+' で計算しています（ブースト・ラッシュなど累計を使う札の点は目安）']:[]};
+    notes:[...(cfpProvisional?['累計の全力値は入力がないため暫定 '+CFP_PROVISIONAL+' で計算しています（ブースト・ラッシュなど累計を使う札の点は目安）']:[]),
+      // 本領発揮など「最大 n 枚を選んで保留」の札があるとき（2026-11-08、利用者の指示「本領発揮には注意書きを入れて」）
+      ...(types.some(t=>/"name":"holdSelectedUpto"/.test(JSON.stringify(t.card.actions)))?['本領発揮：保留する札の選び方（0〜2枚）をすべて試すため、計算が2〜5倍重くなることがあります。保留した札はこのターン中は使えないものとし、その札の成長（回数+1・コスト値−）は数えていません（試作・未検証）']:[])]};
 }
 // 多重集合の異なる並べ方をすべて（-1 は★）
 function distinctPerms(a){const out=[];const cnt=new Map();for(const x of a)cnt.set(x,(cnt.get(x)||0)+1);const keys=[...cnt.keys()].sort((x,y)=>x-y);const cur=[];

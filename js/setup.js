@@ -16,7 +16,8 @@ export function buildSetup({deck, phase, cards, items}) {
     if (en.hif) x.hif = true;
     const a = P.assume[en.uid] || {};
     const g = {score: a.score || 0, scoreTimes: a.times || 0};
-    if (c.growth) {
+    // 回数の上限がない自己成長（羽ばたけ！の全力のときの成長など）は MAX にできないので、grown を付けない（これまでの成長は「成長」の欄で入れる。1.17.0）
+    if (c.growth && c.growth.limit) {
       const lim = c.growth.limit || 1, n = Number.isFinite(a.grown) ? a.grown : lim;   // 既定は自己成長 MAX（数でない値も MAX として扱う）
       if (n >= lim) x.grown = 'full';
       else { g.score += n * (c.growth.score || 0); g.scoreTimes += n * (c.growth.times || 0); x.limits = [lim - n]; }

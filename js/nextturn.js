@@ -112,8 +112,8 @@ function growthOf(e, c, st, P) {
   const sg = startGrowthOf(e);   // カスタマイズの分（エンジンが足すので、入力には入れない）
   const raw = c;   // 自己成長の記録を探すときは、エンジンの値のまま
   c = {...c, g: {score: c.g.score - (sg.score || 0), scoreTimes: c.g.scoreTimes - (sg.scoreTimes || 0)}};
-  if (card?.growth) {
-    const lim = card.growth.limit || 1;
+  if (card?.growth?.limit) {   // 回数の上限がない自己成長（羽ばたけ！など）は、ほかの成長（スコア＋・回数＋）としてそのまま引き継ぐ
+    const lim = card.growth.limit;
     const rec = st.cardEffs.find(r => r.src && r.src.key === raw.key && r.src.g.score === raw.g.score && r.src.g.scoreTimes === raw.g.scoreTimes && r.l.length);
     const n = rec ? Math.max(0, Math.min(lim, lim - rec.l[0])) : lim;   // 記録がない＝自己成長を受け終えた（MAX）
     a.grown = n;

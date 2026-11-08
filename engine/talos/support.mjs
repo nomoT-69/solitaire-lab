@@ -3,10 +3,12 @@
 // ブラウザでも動く（Node 専用の機能なし）。
 export const IN_TURN=new Set(['beforeCardUsed','cardUsed','activeCardUsed','mentalCardUsed','afterCardUsed','afterActiveCardUsed','afterMentalCardUsed','stanceChanged','stanceValueChanged','endOfTurn','staminaDecreased','fullPowerChargeIncreased']);
 export const LATER=new Set(['turn','startOfTurn','beforeStartOfTurn','afterStartOfTurn','everyTurn','startOfStage','afterStartOfStage','prestage','turnSkipped']);
-export const IGNORED_FIELDS=new Set(['genki','fixedGenki','stamina','fixedStamina','fullPowerCharge','halfCostTurns','doubleCostTurns','costReduction','costIncrease','nullifyCostCards','nullifyCostActiveCards','cost','nullifyGenkiTurns','doubleBuffCostTurns']);
+export const IGNORED_FIELDS=new Set(['enthusiasmExtensionTurns',   // 2026-11-08：結果としての今（Tecnai と同じ）
+  'genki','fixedGenki','stamina','fixedStamina','fullPowerCharge','halfCostTurns','doubleCostTurns','costReduction','costIncrease','nullifyCostCards','nullifyCostActiveCards','cost','nullifyGenkiTurns','doubleBuffCostTurns']);
 export const IGNORED_GROWTH=new Set(['g.cost','g.typedCost','g.genki','g.fullPowerCharge','g.halfCostTurns']);
 export const IGNORED_CALLS=new Set(['setFullPowerChargeBuff','setFullPowerEffectBuff','decreaseFullPowerCharge']);
-export const CALLS=new Set(['setStance','drawCard','exchangeHand','addCardToDeck','holdSelected','moveRandomToHand','removeRandom','useRandomCardFree','addRandomUpgradedSSRCardToHand',
+export const CALLS=new Set(['setStance','drawCard','exchangeHand','addCardToDeck','holdSelected','holdSelectedUpto','holdThisCard',   // 2026-11-08：本領発揮・羽ばたけ！など（Tecnai と同じ）
+  'moveRandomToHand','removeRandom','useRandomCardFree','addRandomUpgradedSSRCardToHand',
   'setScoreBuff','setEnthusiasmBuff','setEnthusiasmBonus','setStrengthEffectBuff',...IGNORED_CALLS]);
 export const ASSIGN=new Set(['score','cardUsesRemaining','enthusiasm','enthusiasmMultiplier','effectCounter','scoreTimes']);
 export const VARIABLES=new Set(['fullPowerCharge','cumulativeFullPowerCharge','stance','prevStance','isStrength','isPreservation','isFullPower','preservationTimes','strengthTimes','leisureTimes','fullPowerTimes','stanceChangedTimes',
@@ -70,7 +72,7 @@ export function itemProblems(items,where,out=[]){
 function selectProblems(items,where,out){
   const i=(items||[]).findIndex(x=>x.kind==='action'&&x.op==='call'&&/Selected/.test(x.name));
   if(i>0)out.push(where+'：選ぶ行動（'+items[i].name+'）が最初にない札は対応していない');
-  else if(i===0&&items[i].name!=='holdSelected')out.push(where+'：対応していない選ぶ行動「'+items[i].name+'」');
+  else if(i===0&&items[i].name!=='holdSelected'&&items[i].name!=='holdSelectedUpto')out.push(where+'：対応していない選ぶ行動「'+items[i].name+'」');
 }
 // 札1枚の、対応していない効果（使用条件・効果・継続効果）
 export function cardProblems(card){

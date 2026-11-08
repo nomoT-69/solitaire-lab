@@ -348,3 +348,5 @@ ol.howto li:first-child { color: var(--ink); font-weight: 700; }
 .tgtbtns { display: flex; gap: 6px; }
 .tgtbtns button.on { background: var(--acc2); border-color: var(--acc); font-weight: 700; }
 .cmnote { color: var(--faint); font-size: 12px; margin-top: 18px; }
+.lostline { background: var(--errbg); border-radius: 8px; padding: 6px 10px; font-size: 13px; margin: 6px 0; }
+.lostline small.unsup { margin-left: 6px; }

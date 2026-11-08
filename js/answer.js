@@ -152,7 +152,11 @@ function resultView(R, rerender, {checkList} = {}) {
   const add = (...xs) => box.append(...xs.filter(x => x));   // false・null は出さない
   add(h('div.ansHead', {}, h('span.status', {class: stCls, title: stDesc}, stName + (R.canceled ? '（途中で決定）' : '')),
     h('span.hint', {title: R.criterion === 'max' ? '達成率最大の答え' : `${R.criterion}%で良ければの答え`}, headOrder(R) + secText(R.ms) + 'で計算')));
-  for (const n of R.notes || []) add(h('p.warnline', n));   // 計算の部品の注意書き
+  for (const n of R.notes || []) {
+    add(h('p.warnline', n));   // 計算の部品の注意書き
+    // 本領発揮：山札から2枚を保留に送ると、山札の中で先にある方が先に保留に入る。ゲームでは山札の順番が見えないので、保留から出てくる順番が案内と違うことがある（1.17.0、利用者の指示）
+    if (/^本領発揮/.test(n)) add(h('p.warnline', '保留から出てくる順番は、実はゲーム内ではわかりません。山札の札を2枚保留に送ると、山札の中で順番が早い方が先に保留に送られますが、ゲーム内では山札の中の順番はわからないためです。つまり、GUI で出てくる保留と、実際のゲーム内の保留の挙動が違うときがあります。そのときは、その局面から計算し直してください。'));
+  }
   const tags = [R.followed && ['前の答えから即答', '前の局面の答えから読み出しました（計算し直していません。答えは計算し直したときと同じです）'],
     R.retargeted && ['前の計算を使用', '同じ局面の前の計算を使って、目標・基準を変えた答えを出しました（答えは計算し直したときと同じです）'],
     R.imported && ['PC で計算した答え', 'PC の道具（solve-report.mjs）で計算した答えを読み込みました。手順の木の「ほかの引き」の先は、ここから局面を作って計算し直してください'],
@@ -190,6 +194,8 @@ function resultView(R, rerender, {checkList} = {}) {
     } else {
       if (steps.length) add(h('div.lbl', `${moveNo}手目`), h('div.nmain', {}, node.icon ? pic(node.icon.kind, node.icon.id, node.act, 64) : null, h('div.ntext', node.act)),
         h('div.kpis', {}, kpi('この先の達成率', pct(node.p))));
+      // 届かない局面（その先の達成率0）：止めずに、札だけで点の平均が一番高い手（1.17.0、利用者の依頼）
+      if (node.lost) add(h('p.lostline', {}, h('b', '目標点には届きません。'), '点を伸ばす手（札だけで、点の平均が一番高い手）を案内しています。', h('small.unsup', '試作・未検証')));
       if (node.sameEval > 1) add(h('p.hint', `この局面では、同じ評価の手が ${node.sameEval} 通りあります。`));
       const g = gainOf(R.tree, node);
       if (g) add(h('p.gainline', {}, h('b', g.text), g.sub && h('span', g.sub)));

@@ -43,7 +43,8 @@ const MAX_EST_MIB = 2400;
 const dataKey = m => JSON.stringify([m.calcSettings || null, m.csv.skillCards.length]);
 const followKey = (m, o) => JSON.stringify([m.calcSettings || null, m.csv.skillCards.length, o.criterion, o.order, o.extras]);
 // both：達成率最大と α の答えを1回の計算で並べて出す（エンジンの alsoMax。1.8.0、利用者の決定）
-const critOf = o => o.criterion === 'max' ? {criterion: 'max'} : {alpha: ALPHA[o.criterion], ...(o.both ? {alsoMax: true} : {})};
+// playOnLost：届かない局面（その先の達成率0）では、止めずに札だけで期待最終点の最大の手を打つ（計算の部品 9a6e630、利用者の依頼。答えの値は変わらない。1.17.0）
+const critOf = o => ({...(o.criterion === 'max' ? {criterion: 'max'} : {alpha: ALPHA[o.criterion], ...(o.both ? {alsoMax: true} : {})}), playOnLost: o.playOnLost !== false});
 // 同じ局面で、目標を下げた・基準（比べる順・達成率・自然さ）を変えたときは、前の最適の答えのグラフを使い回す（エンジンの job.retarget、AEGIS_SPEC.md 9.1）。
 // 前の答えの根の局面と同じ（canon が同じ、目標が前以下）で、データが同じときだけ。返り値は {r, model}（model は前の model の目標を変えたもの）
 function tryRetarget(m, model, o) {
@@ -281,7 +282,11 @@ const fmtBest = b => b && ({p: b.p, d: b.d, a: b.a, pNum: b.pNum, dNum: b.dNum, 
 function actLabel(model, a) {
   if (!a) return '止める（何もしない）';
   const E = model.engine;
-  const sel = a.select ? `（${E.types[a.select.ty]?.card.name ?? '札'} を${{hand: '手札', deck: '山札', discard: '捨て札'}[a.select.from] || ''}から選ぶ）` : '';
+  const zn = f => ({hand: '手札', deck: '山札', discard: '捨て札'}[f] || '');
+  // 本領発揮（最大2枚を選んで保留）：選んだ札を〔場所〕つきで並べる。0枚は「保留しない」（計算の部品 15fb7a6。1.17.0）
+  if (a.type === 'card' && a.select?.multi) return `${a.name}（${a.select.multi.map(x => `${E.types[x.ty]?.card.name ?? '札'}〔${zn(x.from)}〕`).join('・')}を保留）`;
+  if (a.type === 'card' && a.noSelect && /holdSelectedUpto/.test(JSON.stringify(E.types[a.ty]?.card.actions || ''))) return `${a.name}（保留しない）`;
+  const sel = a.select ? `（${E.types[a.select.ty]?.card.name ?? '札'} を${zn(a.select.from)}から選ぶ）` : '';
   if (a.type === 'card') return `${a.name}${sel}`;   // 札・ドリンクは名前だけ（利用者の決定。「を使う」「を飲む」は付けない）
   if (a.type === 'drink') return `${a.name}${sel}${a.noSelect ? '（保留する札なし）' : ''}`;   // 選べる札がないときも飲める（計算の部品の項目21、2ca0324）
   if (a.type === 'endTurn') return 'ターン終了';
@@ -385,7 +390,7 @@ function playTree(model, pol, s0 = model.root, id0 = pol.root, base = []) {
     const act = actOf(s, n);
     const br = model.branches(s, act);
     if (br.length !== n.edges.length) throw Error('方策の木の分かれ方が合いません');
-    const me = {act: actLabel(model, n.choice), icon: actIcon(n.choice), kind: n.choice.type, choice: n.choice, ck: choiceKey(E, n.choice), sameEval: n.sameEval ?? null, edges: [], st: stOf(E, s)};
+    const me = {act: actLabel(model, n.choice), icon: actIcon(n.choice), kind: n.choice.type, choice: n.choice, ck: choiceKey(E, n.choice), sameEval: n.sameEval ?? null, ...(n.lost ? {lost: true} : {}), edges: [], st: stOf(E, s)};
     // スコアの内訳（1発の値×回数。計算の部品の explain、33a1526）。分かれは中身（canon）で対応させる（model の分かれは並べ替えていることがある）
     let ex = null;
     if (typeof E.explain === 'function') { try { ex = new Map(E.explain(s, act.raw ?? act).branches.map(x => [E.canon(x.s) + '|' + x.s.score, x])); } catch { ex = null; } }

@@ -21,5 +21,13 @@ export function heatCapScore(model,lambda=8,mu=1,o={}){const E=model.engine;if(!
   // 有効な札を保留するとこのターンで使えなくなる損を見込みに入れる（眠気を保留するのは損なし）
   const SLEEPY=23,wH=o.hold||0;const nHeld=s=>{let n=0;const h=s.held||'';for(let i=0;i<h.length;i++)if(E.types[h.charCodeAt(i)-BASE]?.card?.id!==SLEEPY)n++;return n;};const h0=wH?nHeld(E.root):0;
   const perAct=s=>(s.heat+pend(s)+mu*s.extra*s.factor/100+gamma*gAvg(s))*(s.em??1)*(1+s.bonus/100)*stance(s);
+  // o.drink（試作・測定用、既定 0。2026-11-08、GUI の担当の報告：ドリンクを温存する比べ方で、プロテイン（行動+1）を飲んだ局面を見込みが高く見て、飲まずに届く局面を捨てていた）：
+  // 使ったドリンクの数（根から減った数）× o.drink だけ「行動1回分の見込み」を引く
+  const wD=o.drink||0;const d0=wD?(E.root.drinks||'').length:0;
+  // o.drinkUses（試作・測定用、既定 0。利用者の案 2026-11-08）：行動を増やすドリンク（効果に cardUsesRemaining+= を含む。今のデータではプロテイン）を使った数だけ引く。
+  // 見込みは（残りの行動＋1）を掛けるので、行動を増やすドリンクを飲んだ局面を高く見すぎる。その偏りだけを打ち消す（ほかのドリンクは今のまま）
+  const wU=o.drinkUses||0;const upMemo=new Map();
+  const isUp=id=>{let v=upMemo.get(id);if(v===undefined){const dr=E.drinkDef?.(id);v=!!dr&&/"lhs":"cardUsesRemaining"/.test(JSON.stringify(dr.actions))&&/"op":"\+="/.test(JSON.stringify(dr.actions));upMemo.set(id,v);}return v;};
+  const nUp=s=>{let n=0;const z=s.drinks||'';for(let i=0;i<z.length;i++)if(isUp(z.charCodeAt(i)-BASE))n++;return n;};const u0=wU?nUp(E.root):0;
   return (s,pg)=>pg+lambda*(s.uses+1)*(s.heat+pend(s)+mu*(s.uses+1)*s.extra*s.factor/100+gamma*gAvg(s))*(s.em??1)*(1+s.bonus/100)*stance(s)*t
-    -(wH?wH*lambda*Math.max(0,nHeld(s)-h0)*perAct(s)*t:0);}
+    -(wH?wH*lambda*Math.max(0,nHeld(s)-h0)*perAct(s)*t:0)-(wD?wD*lambda*Math.max(0,d0-(s.drinks||'').length)*perAct(s)*t:0)-(wU?wU*lambda*Math.max(0,u0-nUp(s))*perAct(s)*t:0);}

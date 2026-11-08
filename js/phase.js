@@ -24,7 +24,7 @@ export const zoneOf = (P, u) => P.zones[u] || 'deck';
 
 // 前提（成長）の既定：成長しきり
 // 前提（成長）：assume[uid] = {grown：自己成長を受けた回数（既定は MAX）, score：スコアの成長（+n）, times：スコアの回数（+n）}
-export const growthOf = (P, en) => { const c = D.cardById.get(en.id); if (!c?.growth) return null; const lim = c.growth.limit || 1; const n = P.assume[en.uid]?.grown ?? lim; return {n, lim}; };
+export const growthOf = (P, en) => { const c = D.cardById.get(en.id); if (!c?.growth?.limit) return null; const lim = c.growth.limit; const n = P.assume[en.uid]?.grown ?? lim; return {n, lim}; };
 export const extraGrowth = (P, en) => ({score: P.assume[en.uid]?.score || 0, times: P.assume[en.uid]?.times || 0});
 export const setAssume = (P, u, k, v) => { P.assume[u] = {...P.assume[u], [k]: v}; };
 
