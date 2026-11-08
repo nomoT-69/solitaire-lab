@@ -33,13 +33,18 @@ const sign = x => (x > 0 ? '+' : x < 0 ? '−' : '±') + fmt(Math.abs(x));
 const pct = x => { const v = x * 100; if (v > 0 && v < 0.01) return Number(v.toPrecision(2)) + '%'; return (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')) + '%'; };
 const delta = (a, b, f = v => fmt(v)) => b === a ? f(b) : `${sign(b - a)} → ${f(b)}`;
 const factorText = v => '+' + (v - 100) + '%';
+// ターン終わりの効果の点（計算の部品 5e5a733 の hits の via）：最後の手の行から分けて「ターン終わり：…」の行にする（1.17.1、利用者の要望）
+export const eotOf = e => { const hs = (e?.hits || []).filter(x => x.via === 'endOfTurn'); if (!hs.length) return null;
+  const total = hs.reduce((t, x) => t + x.v * (x.times || 1), 0);
+  const names = [...new Set([...hs].sort((x, y) => (y.phase === 'card') - (x.phase === 'card')).map(x => (x.src || '効果') + (x.phase === 'card' ? '（再演）' : '')))];   // 再演した札を先に
+  return {total, label: 'ターン終わり：' + names.join('・')}; };
 const cells = r => {
   if (r.type === 'end') return {step: '', act: r.n.cut ? 'ほかの引き（この先は省略）' : r.n.reached ? `終わり：目標に届いた` : '終わり：目標に届かない', drawn: '', p: '', path: pct(r.pathP),
     score: fmt(r.n.st?.score ?? r.n.score), heat: '', extra: '', factor: '', bonus: '', stance: '', uses: '', drinks: '', future: r.n.cut ? pct(r.n.p) : r.n.reached ? '100%' : '0%'};
   const a = r.n.st, b = r.c.st;
   return {step: String(r.step), act: r.n.act + (r.n.lost ? '（届かない：点を伸ばす手）' : ''), drawn: r.e.drawn.length ? r.e.drawn.map(x => x.name).join('・') : (r.branching ? '（ドロー札なし）' : ''),
     p: r.branching ? `${r.e.pText}（${pct(r.e.p)}）` : '', path: pct(r.pathP),
-    score: delta(a.score, b.score), heat: delta(a.heat, b.heat), extra: delta(a.extra, b.extra),
+    score: delta(a.score, b.score - (eotOf(r.e)?.total || 0)), heat: delta(a.heat, b.heat), extra: delta(a.extra, b.extra),
     factor: a.factor === b.factor ? factorText(b.factor) : `${sign(b.factor - a.factor)}% → ${factorText(b.factor)}`,
     bonus: a.bonus === b.bonus ? b.bonus + '%' : `${sign(b.bonus - a.bonus)}% → ${b.bonus}%`,
     stance: a.stance === b.stance ? (ST[b.stance] || b.stance) : `${ST[a.stance] || a.stance} → ${ST[b.stance] || b.stance}`,
@@ -116,6 +121,12 @@ export function renderSteps(root, rerender) {
   const seg = h('div.seg', {}, [['path', '手順ごと'], ['all', '全部の表']].map(([v, t]) =>
     h('button', {class: mode === v ? 'on' : '', onclick: () => { S.ui.stepMode = v; save(); rerender(); }}, t)));
   const tr = (r, opts = {}) => {
+    const eot = r.type === 'move' ? eotOf(r.e) : null;
+    if (eot) { const b = r.c.st; return [tr1(r, opts), h('tr.eot', {}, COLS.map(([k]) => k === 'act' ? h('td.act', {style: {paddingLeft: (8 + r.depth * 16) + 'px'}}, eot.label)
+      : h('td', {class: NUM_COLS.includes(k) ? 'n' : ''}, k === 'score' ? delta(b.score - eot.total, b.score) : '')))]; }
+    return tr1(r, opts);
+  };
+  const tr1 = (r, opts = {}) => {
     const c = cells(r);
     const fold = opts.fold && r.type === 'move' && r.branching;
     return h('tr', {class: [r.type, fold && 'fold', fold && collapsed.has(r.key) && 'closed', opts.fold && r.type === 'move' && !r.first && 'sib', r.type === 'end' && (r.n.cut ? 'cut' : r.n.reached ? 'ok' : 'ng')].filter(Boolean).join(' '),

@@ -1,3 +1,4 @@
+import {lifeOn, LIFE_TIMES} from './data.js';
 // 局面の入力（画面の形）から、計算エンジン Tecnai の局面（setup）と目標点を作る。画面にもエンジンにも依らない、純粋な変換。
 // setup の形はエンジンの tecnai.mjs（createEngine）と AEGIS_SPEC.md 3章：
 //   {hand, deck, discard, removed, held（古い順）, drinks, drinkCap, pItems, registered, cardUses, stance, prevStance, enthusiasm,
@@ -22,6 +23,7 @@ export function buildSetup({deck, phase, cards, items}) {
       if (n >= lim) x.grown = 'full';
       else { g.score += n * (c.growth.score || 0); g.scoreTimes += n * (c.growth.times || 0); x.limits = [lim - n]; }
     }
+    if (lifeOn(en)) g.scoreTimes += LIFE_TIMES;   // わたしの人生を込めて（既定で回数+2。1.17.2）
     if (g.score || g.scoreTimes) x.g = g;
     return Object.keys(x).length === 1 ? en.id : x;
   };

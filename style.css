@@ -350,3 +350,7 @@ ol.howto li:first-child { color: var(--ink); font-weight: 700; }
 .cmnote { color: var(--faint); font-size: 12px; margin-top: 18px; }
 .lostline { background: var(--errbg); border-radius: 8px; padding: 6px 10px; font-size: 13px; margin: 6px 0; }
 .lostline small.unsup { margin-left: 6px; }
+/* 成長の欄：名前を入力の箱のすぐ上に置き、欄どうしの間を空ける（1.17.3、利用者の指摘：名前と箱が離れて、隣の欄の名前に見えた） */
+.bulk .row { align-items: flex-end; gap: 18px; }
+.bulk label.f { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; margin: 0; }
+.bulk label.f .fl { font-size: 12px; color: var(--sub); }

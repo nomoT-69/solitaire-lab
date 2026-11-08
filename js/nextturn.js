@@ -1,7 +1,7 @@
 // 次のターンの局面：プレイでたどった最後の局面（worker.js の turnEndState）から、局面の入力（画面の形）を作る。
 // ゲームのターン終わりの動きに合わせる：手札は捨て札へ。保留・除外・山札・成長・ドリンク・指針・回数・P アイテムと継続効果のカウンタは引き継ぐ。
 // 次のターンに引いた札は、利用者が山札から手札へ動かす。ターンをまたいで変わる数（熱意・倍率・行動回数・目標点など）は、前の入力を残して確かめてもらう。
-import {D, startGrowthOf, itemInputs, hifSharedLimit} from './data.js';
+import {D, startGrowthOf, itemInputs, hifSharedLimit, lifeOn, LIFE_TIMES} from './data.js';
 const settingsOf = () => S.calcSettings;
 import {S, uid, newPhase, STANCES} from './store.js';
 
@@ -111,7 +111,7 @@ function growthOf(e, c, st, P) {
   const a = {};
   const sg = startGrowthOf(e);   // カスタマイズの分（エンジンが足すので、入力には入れない）
   const raw = c;   // 自己成長の記録を探すときは、エンジンの値のまま
-  c = {...c, g: {score: c.g.score - (sg.score || 0), scoreTimes: c.g.scoreTimes - (sg.scoreTimes || 0)}};
+  c = {...c, g: {score: c.g.score - (sg.score || 0), scoreTimes: c.g.scoreTimes - (sg.scoreTimes || 0) - (lifeOn(e) ? LIFE_TIMES : 0)}};   // わたしの人生を込めての回数+2 は札の印（1.17.2）
   if (card?.growth?.limit) {   // 回数の上限がない自己成長（羽ばたけ！など）は、ほかの成長（スコア＋・回数＋）としてそのまま引き継ぐ
     const lim = card.growth.limit;
     const rec = st.cardEffs.find(r => r.src && r.src.key === raw.key && r.src.g.score === raw.g.score && r.src.g.scoreTimes === raw.g.scoreTimes && r.l.length);

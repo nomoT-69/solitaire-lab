@@ -139,6 +139,11 @@ export function hifSharedKind(settings, baseId) {
 }
 // 利用者の設定（計算の設定）が、既定では名前ごとに共有する HIF の効果を、札ごとの効果（古い形）で持っているか（その設定が優先されるので、重複なしにならない）
 export const hifOldStyle = (settings, baseId) => !!settings?.abilities?.HIF && !hifSharedLimit(settings, baseId) && !!hifSharedLimit(null, baseId) && hifOk(settings, baseId);
+// 手を伸ばした先に（849・850）：ふつうはソリティアより前に「わたしの人生を込めて」（851・852）を使って回数+2 になっているので、既定で回数+2 を入れる。
+// 札のメニューで外せる（デッキの札の life:false）。1.17.2、利用者の指示
+export const LIFE_TIMES = 2;
+export const lifeOn = en => D.cardById.get(en?.id)?.baseId === 849 && en.life !== false;
+export const lifeAble = en => D.cardById.get(en?.id)?.baseId === 849;
 export const hifOk = (settings, baseId) => !!(settings || calcDefaults()).abilities?.HIF?.some(g => g.cards.includes(baseId));
 
 // 設定を当てたデータで、対応していない効果を持つ札など（エンジンの unsupportedList）。設定にエラーがあれば設定なしのデータで

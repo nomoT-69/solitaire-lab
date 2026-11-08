@@ -74,18 +74,18 @@ export function validate(dk, P) {
   return out;
 }
 
-// 成長をまとめて入れる（例：アクティブ札すべてにスコアの成長 +37）
-let bulk = {score: 0, times: 0, who: 'active'};
+// 成長をまとめて入れる（例：アクティブ札すべてにパラメータ上昇 +37）。入れたらすぐ、選んだ種類の札すべてに反映する（1.17.3、利用者の指摘：ボタンを押さないと入らないのは分かりにくい）
+// 値はゲームの札の詳細の「パラメータ上昇」「攻撃回数」の増えた分（札の元の点に足す）。札ごとに違う値なら空欄で出す
+let bulk = {who: 'active'};
 export function growthBulk(P, all, touch) {
   const targets = () => all.filter(en => { const c = D.cardById.get(en.id); return c && c.type !== 'trouble' && (bulk.who === 'all' || c.type === bulk.who); });
-  const apply = mode => { for (const en of targets()) { const a = P.assume[en.uid] || {};
-    // 入れた（0でない）項目だけを変える。札ごとに入れた別の項目は残す
-    const b = {...a}; for (const k of ['score', 'times']) if (bulk[k]) b[k] = mode === 'set' ? bulk[k] : (a[k] || 0) + bulk[k];
-    P.assume[en.uid] = b; } touch(); };
-  return h('div.bulk', {}, h('h4', '成長（スコア＋・回数＋をまとめて入れる）'),
-    h('div.row', {}, sel('', bulk.who, [['active', 'アクティブ札'], ['mental', 'メンタル札'], ['all', 'すべての札']], v => { bulk.who = v; }),
-      num('スコア +', bulk.score, v => { bulk.score = v || 0; }, {min: 0, width: 5}),
-      num('回数 +', bulk.times, v => { bulk.times = v || 0; }, {min: 0, width: 4})),
-    h('div.row', {}, h('button', {onclick: () => apply('set')}, 'この値にする'), h('button', {onclick: () => apply('add')}, '今の値に足す'),
-      h('button', {onclick: () => { for (const en of targets()) { const a = P.assume[en.uid]; if (a) { delete a.score; delete a.times; } } touch(); }}, '0に戻す')));
+  const common = k => { const vs = [...new Set(targets().map(en => P.assume[en.uid]?.[k] || 0))]; return vs.length === 1 ? vs[0] : null; };
+  const setAll = (k, v) => { for (const en of targets()) { const b = {...(P.assume[en.uid] || {})}; if (v) b[k] = v; else delete b[k]; P.assume[en.uid] = b; } touch(); };
+  const mixed = k => common(k) === null;
+  return h('div.bulk', {}, h('h4', '成長（パラメータ上昇・攻撃回数をまとめて入れる）'),
+    h('div.row', {}, sel('', bulk.who, [['active', 'アクティブ札'], ['mental', 'メンタル札'], ['all', 'すべての札']], v => { bulk.who = v; touch(); }),
+      num('パラメータ上昇 +', common('score') ?? '', v => setAll('score', Math.max(0, v || 0)), {min: 0, width: 5}),
+      num('攻撃回数 +', common('times') ?? '', v => setAll('times', Math.max(0, v || 0)), {min: 0, width: 4}),
+      h('button', {onclick: () => { for (const en of targets()) { const a = P.assume[en.uid]; if (a) { delete a.score; delete a.times; } } touch(); }}, '0に戻す')),
+    (mixed('score') || mixed('times')) && h('p.hint', '札ごとに違う値が入っています（空欄）。ここに入れると、選んだ種類の札すべてがその値になります。'));
 }

@@ -1,5 +1,5 @@
 // 1. デッキ登録：札・ドリンク・P アイテム・P アイドルを名前（正式名・略称）で探して足す。保存して何度も使う
-import {D, search, hifOk, unsupported, PLAN_NAME} from './data.js';
+import {D, search, hifOk, unsupported, PLAN_NAME, lifeOn, lifeAble} from './data.js';
 import {S, save, uid, deck, newDeck} from './store.js';
 import {h, pic, cardTile, popover, toast} from './ui.js';
 import {variantKey} from './nextturn.js';
@@ -34,6 +34,7 @@ export function renderDeck(root, rerender) {
     const c = D.cardById.get(entry.id);
     const items = [];
     if (c.plusId || c.upgraded) items.push({label: c.upgraded ? '通常にする' : '＋にする', key: '+', onclick: () => { entry.id = c.upgraded ? c.baseId : c.plusId; entry.c11n = {}; if (S.result && S.result.deckId === dk.id) S.result.deckChanged = true; touch(); rerender(); }});
+    if (lifeAble(entry)) items.push({label: lifeOn(entry) ? 'わたしの人生を込めて（回数+2）を外す' : 'わたしの人生を込めて（回数+2）を入れる', onclick: () => { entry.life = !lifeOn(entry); if (entry.life) delete entry.life; if (S.result && S.result.deckId === dk.id) S.result.deckChanged = true; touch(); rerender(); }});
     if (hifOk(S.calcSettings, c.baseId) || entry.hif) items.push({label: entry.hif ? 'HIF を外す' : 'HIF を付ける', key: 'h', onclick: () => { entry.hif = !entry.hif; if (S.result && S.result.deckId === dk.id) S.result.deckChanged = true; touch(); rerender(); }});
     for (const cid of c.custs) {
       const cu = D.custs.get(cid); if (!cu) continue;
@@ -131,5 +132,5 @@ function unsup(kind, x) {
   const p = kind === 'cards' ? (u.cardIds.get(x.plusId ?? x.id) || u.cardIds.get(x.id)) : kind === 'drinks' ? u.drinks.find(d => d.id === x.id)?.problems : kind === 'items' ? u.items.find(d => d.id === x.id)?.problems : null;
   return p?.[0] || null;
 }
-const groups = cards => { const m = new Map(); for (const en of cards) { const k = variantKey(en); if (!m.has(k)) m.set(k, []); m.get(k).push(en); } return [...m.values()]; };
+const groups = cards => { const m = new Map(); for (const en of cards) { const k = variantKey(en) + (en.life === false ? '#nolife' : ''); if (!m.has(k)) m.set(k, []); m.get(k).push(en); } return [...m.values()]; };
 const chip = (kind, id, name = '?', onremove) => h('span.chip', {}, pic(kind, id, name, 28), name, h('button.x', {title: '外す', onclick: onremove}, '×'));

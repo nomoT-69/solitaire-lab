@@ -1,6 +1,6 @@
 // ソリティアの画面（毎ターン使う画面）：左に局面（上部の数値の欄、手札、置き場）、右に答え（計算・次の手・プレイの案内）。
 // 札は押して置き場を選ぶ（キー 1:手札 2:保留 3:捨て札 4:除外 0:山札）か、置き場へドラッグする。山札＝デッキ全体−ほかの置き場（自動）。
-import {D, search, itemInputs, staminaTriggered, hifSharedLimit, hifSharedKind, hifOldStyle, hifOk} from './data.js';
+import {D, search, itemInputs, staminaTriggered, hifSharedLimit, hifSharedKind, hifOldStyle, hifOk, lifeOn, lifeAble} from './data.js';
 import {firedOf} from './setup.js';
 import {S, save, uid, deck, newPhase, STANCES} from './store.js';
 import {h, pic, cardTile, popover, num, sel, toast, qtip} from './ui.js';
@@ -34,6 +34,7 @@ export function renderTurn(root, rerender) {
     else if (g) m.push(h('button.mark.full', {title: '自己成長 MAX（押して変える）', onclick: e => { e.stopPropagation(); setAssume(P, en.uid, 'grown', 0); touch(); }}, '成長MAX'));
     const x = extraGrowth(P, en);
     if (x.score || x.times) m.push(h('span.mark.grow', [x.score && `+${x.score}`, x.times && `回数+${x.times}`].filter(Boolean).join(' ')));
+    if (lifeOn(en)) m.push(h('span.mark.grow', {title: 'わたしの人生を込めて（回数+2）を入れています。札を押して外せます'}, '人生 回数+2'));
     if (P.extra.includes(en)) m.push(h('span.mark.ext', '追加'));
     return m;
   };
@@ -43,6 +44,7 @@ export function renderTurn(root, rerender) {
     // HIF のつけ外し（デッキの画面と同じ。デッキの札そのものを変える。1.14.3、利用者の要望）
     const changed = () => { dk.updated = Date.now(); if (S.result) S.result.deckChanged = true; };
     if (c && (hifOk(S.calcSettings, c.baseId) || en.hif)) items.push({label: en.hif ? 'HIF を外す' : 'HIF を付ける', key: 'h', onclick: () => { en.hif = !en.hif; changed(); touch(); }});
+    if (lifeAble(en)) items.push({label: lifeOn(en) ? 'わたしの人生を込めて（回数+2）を外す' : 'わたしの人生を込めて（回数+2）を入れる', onclick: () => { en.life = !lifeOn(en); if (en.life) delete en.life; changed(); touch(); }});
     // 通常／＋、カスタマイズ（デッキの画面と同じ。デッキの札そのものを変える。1.14.3、利用者の要望）
     if (c && (c.plusId || c.upgraded)) items.push({label: c.upgraded ? '通常にする' : '＋にする', key: '+', onclick: () => { en.id = c.upgraded ? c.baseId : c.plusId; en.c11n = {}; changed(); touch(); }});
     for (const cid of c?.custs || []) {
@@ -60,7 +62,7 @@ export function renderTurn(root, rerender) {
       const x = extraGrowth(P, en);
       const inp = (label, k, v) => h('div.pop-c', {}, h('span', label), h('input', {type: 'number', min: 0, value: v, style: {width: '5em'},
         onchange: ev => { setAssume(P, en.uid, k, Math.max(0, Number(ev.target.value) || 0)); save(); }}));
-      items.push(h('div.pop-sub', 'ほかの成長（P アイテム・サポートなどで受けた分）'), inp('スコアの成長 +', 'score', x.score), inp('スコアの回数 +', 'times', x.times));
+      items.push(h('div.pop-sub', 'ほかの成長（P アイテム・サポートなどで受けた分。ゲームの札の詳細で増えた分）'), inp('パラメータ上昇 +', 'score', x.score), inp('攻撃回数 +', 'times', x.times));
     }
     if (P.extra.includes(en)) items.push({label: 'この札を消す（追加した札）', key: 'Delete', cls: 'danger', onclick: () => { P.extra = P.extra.filter(x => x !== en); delete P.zones[en.uid]; P.held = P.held.filter(x => x !== en.uid); touch(); }});
     popover(e.currentTarget, c?.name + '　いま：' + ZNAME[z].replace('（自動）', ''), items, {onclose: rerender});

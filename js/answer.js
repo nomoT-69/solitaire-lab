@@ -1,5 +1,6 @@
 // ソリティアの画面の右側：答えの欄。計算の前は「確かめ」と「計算する」、計算中は進み具合、計算の後は次の手とプレイの案内。
 // プレイの案内は同じ欄の中で進む（「使った」→「何を引いた？」→ 次の手）。比較表・自然さ・答えの確かさは「詳しく」にたたむ。
+import {eotOf} from './steps.js';
 import {D} from './data.js';
 import {S, save, deck, STANCES} from './store.js';
 import {h, pic, fmt, toast, qtip} from './ui.js';
@@ -78,9 +79,16 @@ function gainOf(tree, node) {
   if (same(b => b.heat) && kids[0].heat !== a.heat) parts.push(`熱意 ${fmt(a.heat)} → ${fmt(kids[0].heat)}`);
   if (same(b => b.extra) && kids[0].extra !== a.extra) parts.push(`熱意追加 ${fmt(a.extra)} → ${fmt(kids[0].extra)}`);
   // 1発の値×回数（計算の部品の explain）。どの引きでも同じなら「23,370 × 5回 ＝ +116,850」
-  const hs = node.edges.map(e => e.hits ? e.hits.map(x => x.times > 1 ? `${fmt(x.v)} × ${x.times}回` : fmt(x.v)).join(' ＋ ') : null);
+  // 内訳に出どころ（計算の部品 5e5a733 の src）。使った札そのものの攻撃は名前を省く。ターン終わりの効果（via endOfTurn）は別に出す（1.17.1）
+  const me = node.act.replace(/（.*$/, '');
+  const hitText = x => (x.times > 1 ? `${fmt(x.v)} × ${x.times}回` : fmt(x.v)) + (x.src && x.src !== me ? `（${x.src}${x.phase === 'card' && x.via ? '・再演' : ''}）` : '');
+  const eots = node.edges.map(e => eotOf(e));
+  const eot = eots[0] && eots.every(x => x && x.total === eots[0].total && x.label === eots[0].label) ? eots[0] : null;
+  if (eot) parts.push(`${eot.label} +${fmt(eot.total)}`);
+  const hs = node.edges.map(e => e.hits ? e.hits.filter(x => !(eot && x.via === 'endOfTurn')).map(hitText).join(' ＋ ') : null);
+  const own = lo - (eot?.total || 0);
   const plain = node.edges[0].hits?.length === 1 && node.edges[0].hits[0].times === 1;   // 1発だけなら「+48」のまま
-  if (!plain && hs[0] && hs.every(x => x === hs[0]) && lo === hi && lo > 0) return {text: `使うとスコア ${hs[0]} ＝ +${fmt(lo)}`, sub: `（このターンの合計 ${fmt(tlo)}${parts.length ? '・' + parts.join('・') : ''}）`, short: `${hs[0]} ＝ +${fmt(lo)}点`};
+  if (!plain && hs[0] && hs.every(x => x === hs[0]) && lo === hi && lo > 0) return {text: `使うとスコア ${hs[0]} ＝ +${fmt(own)}`, sub: `（このターンの合計 ${fmt(tlo)}${parts.length ? '・' + parts.join('・') : ''}）`, short: `${hs[0]} ＝ +${fmt(lo)}点`};
   return {text: `使うとスコア ${sc}`, sub: `（このターンの合計 ${tlo === thi ? fmt(tlo) : fmt(tlo) + '〜' + fmt(thi)}${parts.length ? '・' + parts.join('・') : ''}）`, short: `${sc}点`};
 }
 

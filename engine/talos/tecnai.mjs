@@ -391,16 +391,16 @@ export function createEngine(data,setup,options={}){
       // 残り回数（x.limits）は、回数の上限のある効果ごとに順に切り分けて当てる（札と同じ。GUI のセッションの指摘 2026-11-04）
       let li=0;
       for(const e of it.effects){if(e.kind!=='effect'||!e.phase)throw Error('P アイテムの形が未対応: '+it.name);
-        if(IN_TURN.has(e.phase)){const R=rec(defOf(e));defs[R.d].early=true;R.c=x.counter??0;const n=R.l.length;applyLimits(R,x.limits?x.limits.slice(li,li+n):null,false,it.name);li+=n;effs.push(R);}}
+        if(IN_TURN.has(e.phase)){const R=rec(defOf(e));defs[R.d].early=true;defs[R.d].label??=it.name;R.c=x.counter??0;const n=R.l.length;applyLimits(R,x.limits?x.limits.slice(li,li+n):null,false,it.name);li+=n;effs.push(R);}}
       if(x.limits&&li!==x.limits.length)throw Error('残り回数の数が違います（'+it.name+'）：'+li+'個');}
     // 名前ごとに共有するアビリティの効果（HIF 再動。2026-11-04）：局面の札にあれば、名前（通常版の番号）ごとに1つ登録する。
     // 残り回数＝上限 − setup.abilityUses[アビリティ][通常版の番号]（これまでに使った回数、既定0）
     {const seen=new Set();for(const k of ['hand','deck','discard','removed','held'])for(const x of piles[k]){const c=types[x.ty].card;for(const a of c.abilities||[]){
       const iid=sharedAbilityItem(data,a,c.baseId);if(iid===null||seen.has(iid))continue;seen.add(iid);const it=data.items.get(iid);const used=setup.abilityUses?.[a]?.[c.baseId]??0;
-      for(const e of it.effects){if(!IN_TURN.has(e.phase))continue;const R=rec(defOf(e));defs[R.d].early=true;R.l=R.l.map(v=>Math.max(0,v-used));effs.push(R);}}}}
+      for(const e of it.effects){if(!IN_TURN.has(e.phase))continue;const R=rec(defOf(e));defs[R.d].early=true;defs[R.d].label??=it.name;R.l=R.l.map(v=>Math.max(0,v-used));effs.push(R);}}}}
     for(const r of setup.registered||[]){const card=data.cards.get(r.card);if(!card)throw Error('未登録の札: '+r.card);
       const nodes=[];(function f(items){for(const x of items)if(x.kind==='effect'){if(x.phase)nodes.push(x);else f(x.body);}})(card.actions);
-      const n0=nodes[r.index??0];if(!n0)throw Error('登録する効果がありません: '+card.name);const n=carriedGate(n0);const R=rec(defOf(n));R.c=r.counter??0;applyLimits(R,r.limits,false,card.name);effs.push(R);}
+      const n0=nodes[r.index??0];if(!n0)throw Error('登録する効果がありません: '+card.name);const n=carriedGate(n0);const R=rec(defOf(n));defs[R.d].label??=card.name;R.c=r.counter??0;applyLimits(R,r.limits,false,card.name);effs.push(R);}
     for(const k of Object.keys(piles))for(const x of piles[k]){const card=types[x.ty].card;
       const es=inTurnEffects(card);let li=0;
       for(const e of es){const R=rec(defOf(e),x.ty);const n=R.l.length;applyLimits(R,x.limits?x.limits.slice(li,li+n):null,x.full,card.name);li+=n;if(!deadRec(R))cardEffs.push(R);}
@@ -512,14 +512,20 @@ export function createEngine(data,setup,options={}){
 
   // ---- 熱意・スコア（engine.mjs と同じ計算の順） ----
   // TRACE（explain のときだけ true）：スコア1発ごとの値・熱意の増分を状態の hits に記録する（書き換えのたびに新しい配列。枝分かれしても混ざらない）
-  let TRACE=false;
-  function addEnthusiasm(t,v){const d=Math.ceil(((v+t.extra)*t.factor)/100-1e-9);t.heat+=d;if(TRACE)t.hits=[...(t.hits||[]),{heat:d}];}
-  function addScore(t,v){
+  let TRACE=false;const TRACE_VIA=[];
+  // 内訳の出どころ（explain のときだけ）：src＝札・P アイテム・登録した効果・ドリンクの名前、phase＝'card'（使った札の効果）・'drink'・きっかけ（cardUsed・endOfTurn など）
+  const traceInfo=(t,ctx)=>{const o=traceInfo0(t,ctx);if(TRACE_VIA.length)o.via=TRACE_VIA[0];return o;};
+  const traceInfo0=(t,ctx)=>{if(!ctx)return {};if(ctx.recField){const r=effTab[t[ctx.recField]]?.[ctx.recIdx];
+      const src=ctx.recField==='ce'?(ctx.src>=0?types[ctx.src].card.name:null):(r?defs[r.d]?.label??'登録した効果':null);return {src,phase:ctx.phase};}
+    if(ctx.phase==='drink')return {src:ctx.drinkName??'ドリンク',phase:'drink'};
+    return {src:ctx.used>=0?types[ctx.used].card.name:null,phase:ctx.phase&&ctx.phase!=='processCard'?ctx.phase:'card'};};
+  function addEnthusiasm(t,v,ctx){const d=Math.ceil(((v+t.extra)*t.factor)/100-1e-9);t.heat+=d;if(TRACE)t.hits=[...(t.hits||[]),{heat:d,...traceInfo(t,ctx)}];}
+  function addScore(t,v,ctx){
     if(!(v>0))return;
     const a=ceilS(v+t.heat*t.em);
     const mult=STANCE_MULT[t.st]+(isStr(t.st)?t.strB/100:0);
     const b=ceilS(a*mult*(1+t.bonus/100));
-    const g=ceilS(b*cfg.trial);t.score+=g;if(TRACE)t.hits=[...(t.hits||[]),{score:g}];
+    const g=ceilS(b*cfg.trial);t.score+=g;if(TRACE)t.hits=[...(t.hits||[]),{score:g,...traceInfo(t,ctx)}];
   }
 
   // ---- 指針（#7） ----
@@ -532,7 +538,7 @@ export function createEngine(data,setup,options={}){
       const pctx={used:ctx.used,phase:ctx.phase,parent:ctx.phase,inCard:ctx.inCard,select:ctx.select};
       const change=next!==prev&&!(prev===K1&&next===K2)&&!(prev===STR&&next===STR2);
       if(!change)return next!==prev?trigger(one(t),'stanceValueChanged',pctx):one(t);
-      if((prev===K1||prev===K2||prev===NON)&&next!==NON){t.uses+=1;addEnthusiasm(t,prev===K1?5:prev===K2?8:10);}
+      if((prev===K1||prev===K2||prev===NON)&&next!==NON){t.uses+=1;addEnthusiasm(t,prev===K1?5:prev===K2?8:10,ctx?{...ctx,phase:'stanceChange'}:null);}   // 指針の変更で入る熱意（内訳の phase は stanceChange）
       // 順は gakumas-engine の BuffManager.setStance と同じ（G2 2026-11-05、外部レビューの指摘）：既定の効果（熱意・行動＋1、上）→ stanceChanged の発動 → 指針の回数＋1 → 直接の変更の回数＋1 → stanceValueChanged。
       // 前は回数を先に足していたので、stanceChanged の条件で回数を読む効果（エンターテイナーの %3==2 など）が1回早く発動していた
       const cnt=list=>each(list,u=>{if(isPres(next))u.pT++;else if(isStr(next))u.sT++;else if(next===NON)u.lT++;if(ctx.phase==='processCard')u.dirT++;return one(u);});
@@ -545,6 +551,10 @@ export function createEngine(data,setup,options={}){
   function phaseIdx(listId,phases,pk){const k=listId+'|'+pk;let v=PH_CACHE.get(k);if(v===undefined){v=[];effTab[listId].forEach((r,i)=>{if(phases.includes(defs[r.d].phase))v.push(i);});PH_CACHE.set(k,v);}return v;}
   // 条件の判定は、どの効果も「きっかけの直前の状態」で（Talos と同じ。G2 2026-11-05、gakumas-engine との照合で直した）。pre：呼び出し側が渡す判定用の状態
   function trigger(list,phase,ctx,pre=null){
+    // 内訳（explain）のとき：いちばん外側のきっかけ（via）を覚える。ターン終わりの効果の中で札を無料で使った（再演）ときも via は endOfTurn になる
+    if(TRACE){TRACE_VIA.push(phase);try{return trigger0(list,phase,ctx,pre);}finally{TRACE_VIA.pop();}}
+    return trigger0(list,phase,ctx,pre);}
+  function trigger0(list,phase,ctx,pre=null){
     if(list.length===1&&list[0].s.effs===EMPTY&&list[0].s.ce===EMPTY)return list;   // 記録がなければ何も起きない
     const phases=[phase];const ty=ctx.used>=0?types[ctx.used].card.type:null;
     if(phase==='cardUsed'&&ty==='active')phases.push('activeCardUsed');if(phase==='cardUsed'&&ty==='mental')phases.push('mentalCardUsed');
@@ -653,11 +663,11 @@ export function createEngine(data,setup,options={}){
         case 'score':{
           if(a.op!=='+=')throw Error('score の '+a.op+' は未対応');
           const g=ctx.inCard&&t.usedTy>=0?types[t.usedTy].g.score:0;
-          addScore(t,v+g);
-          if(t.sTimes>0){const n=t.sTimes;t.sTimes=0;for(let i=0;i<n;i++)addScore(t,v+g);}
+          addScore(t,v+g,ctx);
+          if(t.sTimes>0){const n=t.sTimes;t.sTimes=0;for(let i=0;i<n;i++)addScore(t,v+g,ctx);}
           return one(t);}
         case 'cardUsesRemaining':if(a.op==='+=')t.uses+=v;else if(a.op==='-=')t.uses-=v;else throw Error('cardUsesRemaining '+a.op);return one(t);
-        case 'enthusiasm':if(a.op!=='+=')throw Error('enthusiasm '+a.op);addEnthusiasm(t,v);return one(t);
+        case 'enthusiasm':if(a.op!=='+=')throw Error('enthusiasm '+a.op);addEnthusiasm(t,v,ctx);return one(t);
         case 'enthusiasmMultiplier':if(a.op!=='=')throw Error('enthusiasmMultiplier '+a.op);t.em=v;return one(t);
         case 'scoreTimes':if(a.op==='+=')t.sTimes+=v;else if(a.op==='=')t.sTimes=v;else throw Error('scoreTimes '+a.op);return one(t);
         case 'effectCounter':{if(!ctx.recField)throw Error('effectCounter は登録された効果の中だけで使えます');
@@ -778,7 +788,7 @@ export function createEngine(data,setup,options={}){
     return trigger(cur,'endOfTurn',{used:-1,phase:null,parent:null});
   }
   function useDrink(s,a){
-    const dr=data.drinks.get(a.id);const ctx={used:-1,phase:'drink',parent:null,select:a.select||null,noSelect:!!a.noSelect,inCard:false};
+    const dr=data.drinks.get(a.id);const ctx={used:-1,phase:'drink',parent:null,select:a.select||null,noSelect:!!a.noSelect,inCard:false,drinkName:dr.name};
     const i=s.drinks.indexOf(C(BASE+a.id));s.drinks=s.drinks.slice(0,i)+s.drinks.slice(i+1);
     const cur=runItems(one(s),dr.actions,needsSnap(dr.actions)?clone(s):s,ctx);
     return each(cur,x=>x.uses<1&&!x.done?endTurn(one(x)):one(x));
@@ -848,9 +858,10 @@ export function createEngine(data,setup,options={}){
   // 返り値 {branches:[{p, s, scoreGain, hits:[{v, times}], heatGain, heatHits:[{v, times}]}]}。hits は入った順に、同じ値が続く分をまとめる（例 [{v:1234,times:3}]）。
   // scoreGain＝hits の合計＝その手の前後の得点の差。heatGain は熱意の増分の合計（指針の変更・札の熱意など。熱意を直接減らす効果は含まない）
   function explain(s0,a){const s=clone(s0);s.hits=undefined;TRACE=true;let r;try{r=transition(s,a);}finally{TRACE=false;}
-    const runs=xs=>{const out=[];for(const v of xs){const o=out[out.length-1];if(o&&o.v===v)o.times++;else out.push({v,times:1});}return out;};
-    return {branches:r.branches.map(b=>{const h=b.s.hits||[];b.s.hits=undefined;const sc=h.filter(x=>x.score!==undefined).map(x=>x.score),ht=h.filter(x=>x.heat!==undefined).map(x=>x.heat);
-      return {p:b.p,s:b.s,scoreGain:b.s.score-s0.score,hits:runs(sc),heatGain:ht.reduce((x,y)=>x+y,0),heatHits:runs(ht)};})};}
+    // 同じ値・同じ出どころ（src）・同じきっかけ（phase）が続く分をまとめる。src・phase は 2026-11-08 に足した（利用者の要望：ターン終わりの効果を別の行に）
+    const runs=xs=>{const out=[];for(const x of xs){const o=out[out.length-1];if(o&&o.v===x.v&&o.src===x.src&&o.phase===x.phase&&o.via===(x.via??null))o.times++;else out.push({v:x.v,times:1,src:x.src??null,phase:x.phase??null,via:x.via??null});}return out;};
+    return {branches:r.branches.map(b=>{const h=b.s.hits||[];b.s.hits=undefined;const sc=h.filter(x=>x.score!==undefined).map(x=>({v:x.score,src:x.src,phase:x.phase,via:x.via})),ht=h.filter(x=>x.heat!==undefined).map(x=>({v:x.heat,src:x.src,phase:x.phase,via:x.via}));
+      return {p:b.p,s:b.s,scoreGain:b.s.score-s0.score,hits:runs(sc),heatGain:ht.reduce((x,y)=>x+y.v,0),heatHits:runs(ht)};})};}
 
   const root=initial();
   const name=ty=>types[ty].card.name+(types[ty].g.score||types[ty].g.scoreTimes?'〔成長 '+types[ty].g.score+'/'+types[ty].g.scoreTimes+'〕':'');

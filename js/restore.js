@@ -1,7 +1,7 @@
 // 報告から局面を戻す：「報告用の情報をコピー」の文（【Solitaire Lab 報告用】{…}）を貼ると、その局面を新しいデッキと局面として作る。
 // 報告の setup（計算の部品の形、setup.js の buildSetup の出力）を、画面の形（デッキ・局面）に戻す。戻したあと buildSetup で作り直し、
 // 報告の setup と同じになるかを確かめる（違えばその旨を出す）。設定（予算など）は変えない（1.13.0、利用者の指示）
-import {D} from './data.js';
+import {D, LIFE_TIMES} from './data.js';
 import {S, save, uid, newDeck, newPhase} from './store.js';
 import {buildSetup} from './setup.js';
 import {itemsFor} from './run.js';
@@ -35,6 +35,8 @@ export function phaseFromReport(o) {
       const lim = c.growth.limit || 1, n = Math.max(0, lim - x.limits[0]);
       a.grown = n; gs -= n * (c.growth.score || 0); gt -= n * (c.growth.times || 0);
     }
+    // 手を伸ばした先に：わたしの人生を込めての回数+2 は札の印（既定で入る）なので、回数+から引く。2 未満なら人生なしとする（1.17.2）
+    if (c?.baseId === 849) { if (gt >= LIFE_TIMES) gt -= LIFE_TIMES; else en.life = false; }
     if (gs) a.score = gs; if (gt) a.times = gt;
     if (Object.keys(a).length) P.assume[en.uid] = a;
     return en;
