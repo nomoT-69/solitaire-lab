@@ -1,5 +1,5 @@
 // クレジットと注意：データの出典とライセンス、画像の権利、計算の前提、答えの種類の意味、非公式のファンツールであること
-import {D} from './data.js';
+import {D, CONTACT} from './data.js';
 import {h} from './ui.js';
 import {STATUS} from './result.js';
 
@@ -11,6 +11,7 @@ export function renderCredits(root) {
       h('ul', {},
         h('li', h('b', '非公式のファンツールです。'), 'ゲーム「学園アイドルマスター」の権利者、および gakumas-tools とは関係がなく、公認を受けたものではありません。'),
         h('li', h('b', '営利目的ではありません。'), '無料で、広告もありません。'),
+        h('li', h('b', '不具合・ご意見：'), 'X の ', h('a', {href: CONTACT.url, target: '_blank', rel: 'noopener'}, `${CONTACT.name} の紹介の投稿`), ' へのリプライか DM でお知らせください。答えがおかしいときは「ヘルプ ▾ → 答えがおかしい？ 報告用の情報をコピー」の文も貼ってください。匿名でのちょっとしたご意見は ', h('a', {href: CONTACT.mshm, target: '_blank', rel: 'noopener'}, 'マシュマロ'), ' へ（長い報告の文は入りきらないことがあるので、X の DM へ）。'),
         h('li', '計算はすべて、あなたのブラウザの中で行います。入力したデッキや局面は、このブラウザの中だけに保存され、どこにも送りません。'),
         h('li', '答えは計算のモデル（下の「計算の前提」）に基づくもので、実際のゲームの結果を保証するものではありません。'))),
     h('section.panel', {},

@@ -1,5 +1,5 @@
 // 報告用の情報：テストする人が「おかしい」と思ったときに、版・設定・局面・答えを1つの文字列にしてコピーする（個人情報は入らない）。
-import {D} from './data.js';
+import {D, CONTACT} from './data.js';
 import {S, deck} from './store.js';
 import {buildSetup} from './setup.js';
 import {itemsFor} from './run.js';
@@ -21,6 +21,6 @@ export function reportText(note = '') {
 export async function copyReport() {
   const note = prompt('何がおかしかったか、ひとことあれば書いてください（なくてもよい）', '') ?? '';
   const t = reportText(note);
-  try { await navigator.clipboard.writeText(t); toast('報告用の情報をコピーしました。メッセージに貼り付けて送ってください'); }
+  try { await navigator.clipboard.writeText(t); toast(`報告用の情報をコピーしました。X（${CONTACT.name}）の DM か、紹介の投稿へのリプライに貼り付けて送ってください（ヘルプ ▾ → 不具合・ご意見を送る）`); }
   catch { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t], {type: 'text/plain'})); a.download = 'aegis-report.txt'; a.click(); toast('報告用の情報をファイルに保存しました'); }
 }
