@@ -1,6 +1,6 @@
 // ソリティアの画面（毎ターン使う画面）：左に局面（上部の数値の欄、手札、置き場）、右に答え（計算・次の手・プレイの案内）。
 // 札は押して置き場を選ぶ（キー 1:手札 2:保留 3:捨て札 4:除外 0:山札）か、置き場へドラッグする。山札＝デッキ全体−ほかの置き場（自動）。
-import {D, search, itemInputs, staminaTriggered, hifSharedLimit, hifOk} from './data.js';
+import {D, search, itemInputs, staminaTriggered, hifSharedLimit, hifSharedKind, hifOldStyle, hifOk} from './data.js';
 import {firedOf} from './setup.js';
 import {S, save, uid, deck, newPhase, STANCES} from './store.js';
 import {h, pic, cardTile, popover, num, sel, toast, qtip} from './ui.js';
@@ -154,14 +154,20 @@ export function renderTurn(root, rerender) {
         h('small.unsup', {title: '日が差す方へを使うとき、消費体力を0にする効果（レッスン全体で' + lim + '回）'}, '試作・未検証'));
     });
     rows.push(...pre);
-    // HIF 再動（名前ごとに合わせて2回まで）：デッキに HIF の札があるときだけ、これまでに使った回数
+    // HIF の名前ごとに共有する効果（再動：合わせて2回まで。再動＆ドロー・眠気除去：最初の1枚だけ、1.16.7）：デッキに HIF の札があるときだけ、これまでに使った回数
     const hifIds = [...new Set(all.filter(en => en.hif).map(en => D.cardById.get(en.id)?.baseId).filter(Boolean))];
     for (const bid of hifIds) {
+      const c = D.cardById.get(bid);
+      if (hifOldStyle(S.calcSettings, bid)) { rows.push(h('p.warnline', `${c?.name || '?'}：「設定」の HIF の組が古い形なので、同じ名前の札が2枚あると両方で HIF が発動する計算になります（設定の HIF の組を既定に戻すと、最初の1枚だけになります）`)); continue; }
       const lim = hifSharedLimit(S.calcSettings, bid); if (!lim) continue;
-      const c = D.cardById.get(bid); P.abilityUses ||= {}; const m = (P.abilityUses.HIF ||= {});
-      rows.push(h('div.itemrow', {}, pic('cards', bid, c?.name || '?', 32), h('span.inm', (c?.name || '?') + '（HIF 再動）'),
-        num('これまでに使った回数', m[bid] || 0, v => { m[bid] = Math.max(0, Math.min(lim, v ?? 0)); touch(); }, {min: 0, max: lim, width: 4, hint: '/' + lim}),
-        h('small.unsup', {title: '使ったときに行動+1。同じ名前の HIF の札で合わせて ' + lim + ' 回まで（通常版と＋版は同じ名前として数える）'}, '試作・未検証')));
+      const kind = hifSharedKind(S.calcSettings, bid); P.abilityUses ||= {}; const m = (P.abilityUses.HIF ||= {});
+      // 1回までの効果で、同じ名前の HIF の札がデッキに1枚だけなら出さない（ふつうはソリティアまで使わずに持っていくため。1.16.8、利用者の指示）。前に入れた値は消す
+      if (lim === 1 && all.filter(en => en.hif && D.cardById.get(en.id)?.baseId === bid).length < 2) { if (m[bid]) delete m[bid]; continue; }
+      const what = {'再動': '使ったときに行動+1', '再動＆ドロー': '使ったときに行動+1・1枚引く', '眠気除去': '使ったときに山札か捨て札の眠気を1枚除外'}[kind];
+      rows.push(h('div.itemrow', {}, pic('cards', bid, c?.name || '?', 32), h('span.inm', (c?.name || '?') + `（HIF ${kind}）`),
+        lim === 1 ? h('label.f', {}, h('input', {type: 'checkbox', checked: (m[bid] || 0) >= 1, onchange: e => { m[bid] = e.target.checked ? 1 : 0; touch(); }}), 'ソリティアの前に使った')
+          : num('これまでに使った回数', m[bid] || 0, v => { m[bid] = Math.max(0, Math.min(lim, v ?? 0)); touch(); }, {min: 0, max: lim, width: 4, hint: '/' + lim}),
+        h('small.unsup', {title: what + '。同じ名前の HIF の札で合わせて ' + lim + ' 回まで（通常版と＋版は同じ名前として数える）'}, '試作・未検証')));
     }
     const stamina = dk.items.some(staminaTriggered);
     if (!rows.length && !stamina) return null;

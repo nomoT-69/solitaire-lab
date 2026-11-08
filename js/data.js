@@ -131,6 +131,14 @@ export function hifSharedLimit(settings, baseId) {
   const g = (settings || calcDefaults()).abilities?.HIF?.find(g => g.cards.includes(baseId) && g.shared != null);
   return g ? Number((String(g.shared).match(/limit:(\d+)/) || [])[1] || 0) || null : null;
 }
+// 名前ごとに共有する HIF の効果の種類（画面の名前）。1.16.7：再動＆ドロー・眠気除去も名前ごとに1回（計算の部品 5b45678、利用者の決まり）
+export function hifSharedKind(settings, baseId) {
+  const g = (settings || calcDefaults()).abilities?.HIF?.find(g => g.cards.includes(baseId) && g.shared != null);
+  const t = String(g?.shared || '');
+  return /drawCard/.test(t) ? '再動＆ドロー' : /removeRandom/.test(t) ? '眠気除去' : '再動';
+}
+// 利用者の設定（計算の設定）が、既定では名前ごとに共有する HIF の効果を、札ごとの効果（古い形）で持っているか（その設定が優先されるので、重複なしにならない）
+export const hifOldStyle = (settings, baseId) => !!settings?.abilities?.HIF && !hifSharedLimit(settings, baseId) && !!hifSharedLimit(null, baseId) && hifOk(settings, baseId);
 export const hifOk = (settings, baseId) => !!(settings || calcDefaults()).abilities?.HIF?.some(g => g.cards.includes(baseId));
 
 // 設定を当てたデータで、対応していない効果を持つ札など（エンジンの unsupportedList）。設定にエラーがあれば設定なしのデータで
