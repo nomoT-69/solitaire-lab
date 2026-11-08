@@ -343,3 +343,7 @@ ol.howto li:first-child { color: var(--ink); font-weight: 700; }
 .preview .pc { display: inline-flex; align-items: center; gap: 4px; }
 .preview .hint { width: 100%; margin: 0; }
 .pcbadge { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--okbg); color: var(--ok); border: 1px solid var(--ok); }
+
+.tgtwrap { display: flex; flex-direction: column; gap: 4px; }
+.tgtbtns { display: flex; gap: 6px; }
+.tgtbtns button.on { background: var(--acc2); border-color: var(--acc); font-weight: 700; }

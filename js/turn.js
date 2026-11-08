@@ -98,7 +98,9 @@ export function renderTurn(root, rerender) {
     h('div.hudrow', {},
       h('div.stances', {}, h('span.sl', '指針', qtip('ゲームの画面の、今の指針。温存・強気の「2段階」は、指針の段階が2のとき')), h('div.seg', {}, STANCES.map(([v, t]) => h('button', {class: 'st ' + v + (p.stance === v ? ' on' : ''), onclick: () => setp('stance')(v)}, t)))),
       stepper('行動回数', 'cardUses', {min: 1, max: 20, tip: 'このターンに、まだ札を使える回数（ゲームの画面のスキルカード使用数）'}),
-      field('目標点', 'target', {width: 9, cls: 'big', tip: 'このターンで届かせたい点数。プレイの途中から作った局面では、それまでに入った点を引いた値'})),
+      h('div.tgtwrap', {}, field('目標点', 'target', {width: 9, cls: 'big', tip: 'このターンで届かせたい点数。プレイの途中から作った局面では、それまでに入った点を引いた値'}),
+        // よく使う目標点を押して入れる（1.16.5、利用者の要望）
+        h('div.tgtbtns', {}, [1400000, 2400000].map(v => h('button.mini', {class: p.target === v ? 'on' : '', onclick: () => setp('target')(v)}, v / 10000 + '万'))))),
     // 目標点の下のチェック：左に「ドリンクを温存する」（その下に「95%の答えも出す」）、右に「点数を伸ばす」（1.14.7、利用者の要望で 95% を温存の下へ）
     h('div.lastexam', {},
       h('div.opt', {}, h('div.optrow', {}, h('label.f', {}, h('input', {type: 'checkbox', checked: !!p.saveDrinks && !p.beyondGoal, onchange: e => { p.saveDrinks = e.target.checked; if (e.target.checked) p.beyondGoal = false; touch(); }}), 'ドリンクを温存する', h('span.hiftag', 'HIF 1回目の試験におすすめ')), qtip('HIF（試験が2回続くシナリオ）の1回目で、2回目のためにドリンクを残したいときに入れます。入れると、届く確率 → ドリンク → 手数 の順で比べ、ドリンクを少なく使う手を選びます。ほかのシナリオ・HIF の2回目では入れなくてかまいません（ドリンクは比べず、届く確率 → 手数 の順）')),
