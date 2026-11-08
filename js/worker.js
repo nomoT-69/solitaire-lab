@@ -44,7 +44,7 @@ const dataKey = m => JSON.stringify([m.calcSettings || null, m.csv.skillCards.le
 const followKey = (m, o) => JSON.stringify([m.calcSettings || null, m.csv.skillCards.length, o.criterion, o.order, o.extras]);
 // both：達成率最大と α の答えを1回の計算で並べて出す（エンジンの alsoMax。1.8.0、利用者の決定）
 // playOnLost：届かない局面（その先の達成率0）では、止めずに札だけで期待最終点の最大の手を打つ（計算の部品 9a6e630、利用者の依頼。答えの値は変わらない。1.17.0）
-const critOf = o => ({...(o.criterion === 'max' ? {criterion: 'max'} : {alpha: ALPHA[o.criterion], ...(o.both ? {alsoMax: true} : {})}), playOnLost: o.playOnLost !== false});
+const critOf = o => ({...(o.criterion === 'max' ? {criterion: 'max'} : {alpha: ALPHA[o.criterion], ...(o.both ? {alsoMax: true} : {})}), playOnLost: o.playOnLost !== false, playOnLostDrinks: !String(o.order || '').startsWith('d')});   // 届かない局面はドリンクも使って点を伸ばす。ドリンクを温存するときは札だけ（計算の部品 8fc21a7、1.17.5、利用者の依頼）
 // 同じ局面で、目標を下げた・基準（比べる順・達成率・自然さ）を変えたときは、前の最適の答えのグラフを使い回す（エンジンの job.retarget、AEGIS_SPEC.md 9.1）。
 // 前の答えの根の局面と同じ（canon が同じ、目標が前以下）で、データが同じときだけ。返り値は {r, model}（model は前の model の目標を変えたもの）
 function tryRetarget(m, model, o) {

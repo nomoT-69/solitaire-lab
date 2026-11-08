@@ -45,10 +45,10 @@ function maxTracker(model,opts){
 // α を決めた比較では、見込みの段は「達成率最大」（辞書式、速い）で解く（α の前線を見込みの順で作ると重く、GUI の局面でメモリ不足になった。DESIGN 22.4）
 // 段の順（G2 2026-11-05、利用者の決定。案 B）：熱意の見込みの段をすべての上限で先に試し、今の順（根からの得点）の段は後にまとめる（opts.capOrder:'interleave' で前の順：上限ごとに見込み→今の順）。
 // GUI の局面で、E[D] 41/108 に届くのが 337秒 → 110秒（厳密の早めの見切りと合わせて。DESIGN 22.23）
-// ドリンクを後回しにする段（opts.drinkStages、試作・測定用。2026-11-08、利用者の決定「両方試して良いほうを残す」）：見込みの段の後に、使ったドリンクの数だけ見込みを下げる段
+// ドリンクを後回しにする段（opts.drinkStages、既定で使う。2026-11-08、利用者の決定「両方試して良いほうを残す」「既定で入れる」）：見込みの段の後に、使ったドリンクの数だけ見込みを下げる段
 // （heatOpts に drink:opts.drinkStageWeight（既定1）を足す）を同じ上限で足す。段ごとに良い方が残るので答えは悪くならない（時間は増える）。
 const withDrinkStages=(opts,stages)=>opts.drinkStages?stages.flatMap(st=>st.heat&&!st.drink?[st,{...st,drink:true}]:[st]):stages;
-const capStages=(opts,list)=>withDrinkStages(opts,capStages0(opts,list));
+const capStages=(opts,list)=>withDrinkStages(opts,capStages0(opts,list));   // 最初の小さな段（earlyCap）は capStages0（ドリンク後回しの段なし）
 const capStages0=(opts,list)=>{const cs=list.map(c=>typeof c==='number'?c:c.cap);
   if(opts.capHeat===false)return list.map(c=>({cap:typeof c==='number'?c:c.cap,heat:!!c.heat}));
   if(opts.capOrder==='interleave')return cs.flatMap(cap=>[{cap,heat:true},{cap,heat:false}]);
@@ -77,7 +77,8 @@ const lostSwap=(opts,label,r,prev)=>!!opts.playOnLost&&!!prev&&String(prev.solve
 const lostKeep=(opts,j)=>!opts.playOnLost||!j.bestRaw||(j.bestRaw.p.n===j.bestRaw.p.d);
 const withHeatDefault=opts=>opts.heatOpts===undefined?{...opts,heatOpts:AEGIS_HEAT_DEFAULT}:opts;
 // ドリンクを持たない局面では、ドリンクを後回しにする段を飛ばす（同じ見込みの段の繰り返しになるため）
-const withDrinkCheck=(model,opts)=>opts.drinkStages&&!(model.engine?.root?.drinks?.length)?{...opts,drinkStages:false}:opts;
+// 既定で使う（2026-11-08、利用者の決定「はい」。DESIGN 22.49）。opts.drinkStages:false で使わない
+const withDrinkCheck=(model,opts)=>({...opts,drinkStages:(opts.drinkStages??true)&&!!(model.engine?.root?.drinks?.length)});
 export function solveAegis(model,opts={}){
   opts=withHeatDefault(opts);opts=withDrinkCheck(model,opts);
   // 最後の試験の「点数を伸ばす」（opts.beyondGoal、G2 2026-11-06、利用者の決定。GUI のチェック。既定は「目標点まででよい」＝今の計算）：
@@ -120,10 +121,11 @@ export function solveAegis(model,opts={}){
     if(r.reason==='MEMORY_LIMIT'){memStop=Math.min(memStop,st.cap);trials.push({solver:'Tomahawk（層の上限 '+cap+'）',status:r.status,reason:r.reason,ms:r.stats?.elapsedMs});return null;}   // メモリの上限：これより大きい層の上限も無理
     offer(r,'Tomahawk（層の上限 '+cap+(asMax?'・達成率最大':'')+'）');return null;};
   // 早めの層の上限は小さく（既定5千：重い局面で約1秒）。後の改善は caps（既定 2万 → 10万 → 30万）
-  for(const st of capStages(opts,[opts.earlyCap??5000])){if(p1()||left()<=0)break;const done=tryCap(st,Math.min(left(),maxMs*(opts.capFrac??0.15)),!crit&&opts.alphaEarlyMax!==false);if(done)return done;}
+  for(const st of capStages0(opts,[opts.earlyCap??5000])){if(p1()||left()<=0)break;const done=tryCap(st,Math.min(left(),maxMs*(opts.capFrac??0.15)),!crit&&opts.alphaEarlyMax!==false);if(done)return done;}
   // 3) Tomahawk で厳密に解く。暫定の答えを良くする時間を、予算の reserveFrac（既定 25%）だけ残す
-  const reserve=maxMs*(opts.reserveFrac??0.25);
-  const t=solveTomahawkAuto(model,{...opts,maxStates,growthLimit:growthLimitOf(opts,maxStates),maxMs:Math.max(1,left()-reserve)});if(t.status!=='complete'&&opts.compact!==false)trim(model);trials.push({solver:'Tomahawk',status:t.status,reason:t.reason,ms:t.stats?.elapsedMs});
+  const reserve=maxMs*(opts.reserveFrac??0.35);   // 厳密の試みの後に層の上限の段へ残す時間の割合（2026-11-08 に 0.25 → 0.35、利用者の決定。DESIGN 22.50）
+  // opts.exactFrac（試作・測定用、2026-11-08）：厳密の試みに使う時間を予算のこの割合までにする（層の上限の段に時間を残す）
+  const t=solveTomahawkAuto(model,{...opts,maxStates,growthLimit:growthLimitOf(opts,maxStates),maxMs:Math.max(1,Math.min(left()-reserve,opts.exactFrac?maxMs*opts.exactFrac:Infinity))});if(t.status!=='complete'&&opts.compact!==false)trim(model);trials.push({solver:'Tomahawk',status:t.status,reason:t.reason,ms:t.stats?.elapsedMs});
   if(t.status==='complete'){t.solver='Tomahawk';t.trials=trials;MX.offer(t,'Tomahawk');return MX.attach(t);}
   // 4) 残りの時間で、暫定の答えを良くする。既定：層の上限を広げる。improve:true（試作。届く最大の基準だけ）：層の上限2万の後、
   //    暫定の方策の分かれ目を到達確率の高い順に Javelin で解き直す（improvePolicy）
@@ -152,7 +154,7 @@ export function createAegisJob(model,opts={}){
   const crit=opts.criterion==='max';const canJavelin=!opts.noJavelin&&javelinSupports(opts).ok;
   const caps=capStages(opts,opts.caps??[20000,100000,300000]),steps=opts.horizonSteps??[opts.maxOps??24,48,96];
   const bm=opts.noJavelin?null:beamOpts(opts);const J={trials:[],prov:null,final:null,calls:0,totalMs:0,quickDone:!canJavelin,beamIdx:bm?0:Infinity,
-    early:{stages:capStages(opts,[opts.earlyCap??5000]),idx:0,res:{},done:false},exact:{hi:0,res:{},last:null,widened:[],abandoned:null},cap:{idx:0,res:{}},disposed:false};
+    early:{stages:capStages0(opts,[opts.earlyCap??5000]),idx:0,res:{},done:false},exact:{hi:0,res:{},last:null,widened:[],abandoned:null},cap:{idx:0,res:{}},disposed:false};
   const key=r=>r.bestRaw;const better=(a,b)=>!b||betterBest(key(a),key(b),opts);const MX=maxTracker(model,opts);   // 最大の答えも並べる（opts.alsoMax）
   const p1=()=>J.prov&&J.prov.bestRaw.p.n===J.prov.bestRaw.p.d;
   const stats=()=>({calls:J.calls,elapsedMs:J.totalMs});
@@ -192,9 +194,10 @@ export function createAegisJob(model,opts={}){
     while(!J.early.done&&left()>0){const Q=J.early;const x=tryCap(Q.stages[Q.idx],Q.res,Math.min(left(),maxMs*(opts.capFrac??0.15)),!crit&&opts.alphaEarlyMax!==false);if(x==='final')return done();if(x==='more')break;
       Q.idx++;Q.res={};if(x==='stop'||Q.idx>=Q.stages.length||p1()){Q.done=true;Q.res=null;}}
     // 3) 厳密な Tomahawk（続きから）。操作数の上限で切った状態があれば、上限を広げて解き直す（solveTomahawkAuto と同じ）
-    const reserve=maxMs*(opts.reserveFrac??0.25);const E=J.exact;
+    const reserve=maxMs*(opts.reserveFrac??0.35);const E=J.exact;
     while(!E.abandoned&&E.hi<steps.length&&left()>reserve){const h=steps[E.hi];
-      const r=solveTomahawk(model,{...opts,maxOps:h,maxStates,growthLimit:growthLimitOf(opts,maxStates),maxMs:Math.max(1,left()-reserve),resume:E.res});
+      const exLeft=opts.exactFrac?maxMs*opts.exactFrac-(E.spent??0):Infinity;if(exLeft<=0)break;const tE=Date.now();   // opts.exactFrac（試作・測定用）：この run の予算のうち厳密に使う割合
+      const r=solveTomahawk(model,{...opts,maxOps:h,maxStates,growthLimit:growthLimitOf(opts,maxStates),maxMs:Math.max(1,Math.min(left()-reserve,exLeft)),resume:E.res});E.spent=(E.spent??0)+Date.now()-tE;
       if(r.status!=='complete'){J.trials.push({solver:'Tomahawk（続きから）',status:r.status,reason:r.reason,ms:r.stats?.elapsedMs});
         if(r.reason==='TIME_LIMIT')break;
         // 状態数・メモリの上限：厳密な計算の続きは捨てる。その前の操作数の上限で解けていれば、その範囲での最適を返す

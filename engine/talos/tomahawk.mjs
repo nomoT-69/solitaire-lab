@@ -516,10 +516,11 @@ export function solveTomahawk(model,opts){
     // 方策の復元。あわせて、各分かれ目で「選んだ手と同じ評価（比べる順の値と、自然さの指標をつけた場合は指標まで、すべて同じ）になる別の手」を数える。
     // 返り値の sameEval：root＝ルートで同じ評価になる手の数（選んだ手を含む。1 なら別の手順はない）、altNodes＝同じ評価の別の手がある分かれ目の数、
     // decisionNodes＝分かれ目（手を選ぶ局面）の数。止める（何もしない）が同じ評価になる場合も1つの手として数える。
-    // 届かない局面の打ち方（opts.playOnLost）：グラフの上で、札だけ（ドリンクを使わない）の期待得点の最大と、その手（番号。-1＝止める）。初めて要るときに1回だけ計算する
+    // 届かない局面の打ち方（opts.playOnLost）：グラフの上で、期待得点の最大と、その手（番号。-1＝止める）。ドリンクも使う（opts.playOnLostDrinks:false で札だけ）。初めて要るときに1回だけ計算する
+    // ドリンクも使う（opts.playOnLostDrinks、既定 true。2026-11-08 利用者の依頼。false で札だけ）
     function lostPlay(){if(LOST)return LOST;const N=nodeK.n,ev=new Float64Array(N),ai=new Int32Array(N).fill(-1),P=probs.map(toNum);
       for(let v=N-1;v>=0;v--){let be=0,ba=-1;const a0=actStart.a[v];
-        for(let a=a0;a<actStart.a[v+1];a++){if(actFlag.a[a]&1)continue;let e=0;for(let bi=brStart.a[a];bi<brStart.a[a+1];bi++){const c=brChild.a[bi];e+=P[brProb.a[bi]]*(brGain.a[bi]+(c>=0?ev[c]:0));}
+        for(let a=a0;a<actStart.a[v+1];a++){if((actFlag.a[a]&1)&&opts.playOnLostDrinks===false)continue;let e=0;for(let bi=brStart.a[a];bi<brStart.a[a+1];bi++){const c=brChild.a[bi];e+=P[brProb.a[bi]]*(brGain.a[bi]+(c>=0?ev[c]:0));}
           if(e>be+1e-9){be=e;ba=a-a0;}}
         ev[v]=be;ai[v]=ba;}
       return LOST={ev,ai};}
@@ -552,7 +553,8 @@ export function solveTomahawk(model,opts){
         if(same(v,STOP)){
           // opts.playOnLost（2026-11-08、利用者の依頼、案 A）：届かない局面（ここから先の達成率が0）でも止めずに、札だけ（ドリンクは使わない）で期待最終点が一番高くなる手を打つ。
           // 達成率・ドリンク・手数の答え（best）は今のまま（止める方策の値）。方策の案内だけが続く（手数は答えより増える）
-          const L=opts.playOnLost&&acts.length?lostPlay():null;const li=L?L.ai[id]:-1;
+          // 本当に届かない局面（取れる最大の得点が必要点に届かない）だけ。α の比べで「わざと止める」局面（届く見込みはある）は止めたまま（方策の P を変えない）
+          const L=opts.playOnLost&&acts.length&&maxGain&&maxGain[id]<n?lostPlay():null;const li=L?L.ai[id]:-1;
           if(li>=0){const act=acts[li],br=model.branches(s,act),b0=brStart.a[a0+li];if(brStart.a[a0+li+1]-b0!==br.length)throw Error('EXTRACT_GRAPH');
             const node={id:out.length,key:model.v6key(s),choice:act.raw??act,edges:null,sameEval:ties,lost:true};out.push(node);memo.set(mk,node.id);
             node.edges=br.map((b,i)=>({index:b.index,p:b.pFloat,key:model.v6key(b.s),drawn:[],next:build(b.s,brChild.a[b0+i],STOP,false)}));return node.id;}
