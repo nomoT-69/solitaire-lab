@@ -3,7 +3,7 @@ import {D, CONTACT} from './data.js';
 import {S, deck} from './store.js';
 import {buildSetup} from './setup.js';
 import {itemsFor} from './run.js';
-import {toast} from './ui.js';
+import {h} from './ui.js';
 
 export function reportText(note = '') {
   const dk = deck();
@@ -18,9 +18,20 @@ export function reportText(note = '') {
   };
   return '【Solitaire Lab 報告用】\n' + JSON.stringify(o);
 }
+// コピーしたあとに、送り先（X の紹介の投稿へのリプライ）を押して開ける案内を出す（1.17.9、利用者の要望。DM は「必要なら」の扱い）
+function sendGuide(copied) {
+  const go = url => window.open(url, '_blank', 'noopener');
+  const dlg = h('dialog.restore', {},
+    h('h3', copied ? '報告用の情報をコピーしました' : '報告用の情報をファイルに保存しました'),
+    h('p', copied ? '下の送り先を開いて、貼り付けて（Ctrl＋V）送ってください。' : '保存したファイルを開いて中身をコピーし、下の送り先に貼り付けて送ってください。'),
+    h('div.row', {}, h('button.pri', {onclick: () => go(CONTACT.url)}, `X の紹介の投稿にリプライする（${CONTACT.name}）`)),
+    h('p.hint', '文字数の上限で入りきらないときは、何回かに分けてリプライしてください。必要なときは DM でもかまいません。'),
+    h('div.row', {}, h('button', {onclick: () => { dlg.close(); dlg.remove(); }}, '閉じる')));
+  document.body.append(dlg); dlg.showModal();
+}
 export async function copyReport() {
   const note = prompt('何がおかしかったか、ひとことあれば書いてください（なくてもよい）', '') ?? '';
   const t = reportText(note);
-  try { await navigator.clipboard.writeText(t); toast(`報告用の情報をコピーしました。X（${CONTACT.name}）の DM か、紹介の投稿へのリプライに貼り付けて送ってください（ヘルプ ▾ → 不具合・ご意見を送る）`); }
-  catch { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t], {type: 'text/plain'})); a.download = 'aegis-report.txt'; a.click(); toast('報告用の情報をファイルに保存しました'); }
+  try { await navigator.clipboard.writeText(t); sendGuide(true); }
+  catch { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t], {type: 'text/plain'})); a.download = 'aegis-report.txt'; a.click(); sendGuide(false); }
 }

@@ -39,7 +39,7 @@ function render() {
           {label: '概要（はじめての方へ）', onclick: () => window.open('manual/summary.html', '_blank', 'noopener')},
           {label: '使い方（詳細マニュアル）', onclick: () => window.open('manual/index.html', '_blank', 'noopener')},
           {label: '答えがおかしい？ 報告用の情報をコピー', onclick: copyReport},
-          {label: `不具合・ご意見を送る（X ${CONTACT.name}）`, onclick: () => window.open(CONTACT.url, '_blank', 'noopener')},
+          {label: `不具合・ご意見を送る（X ${CONTACT.name} の投稿へリプライ）`, onclick: () => window.open(CONTACT.url, '_blank', 'noopener')},
           {label: '匿名でご意見を送る（マシュマロ）', onclick: () => window.open(CONTACT.mshm, '_blank', 'noopener')},
           {label: '報告から局面を戻す（貼り付け）', onclick: () => openRestore(go)},
           {label: 'PC で計算した答えのファイルを読み込む', onclick: () => importAnswer(go)}])}, 'ヘルプ ▾'),

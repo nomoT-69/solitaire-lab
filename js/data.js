@@ -143,7 +143,7 @@ export const hifOldStyle = (settings, baseId) => !!settings?.abilities?.HIF && !
 // 札のメニューで外せる（デッキの札の life:false）。1.17.2、利用者の指示
 export const LIFE_TIMES = 2;
 // 不具合・ご意見の連絡先（作者の X の紹介の投稿。リプライ・DM。1.17.6、利用者の指示）
-export const CONTACT = {mshm: 'https://marshmallow-qa.com/a4q2vyysr5enxfg', url: 'https://x.com/satosi_kubo/status/2119049241457004711', name: '@satosi_kubo'};
+export const CONTACT = {profile: 'https://x.com/satosi_kubo', mshm: 'https://marshmallow-qa.com/a4q2vyysr5enxfg', url: 'https://x.com/satosi_kubo/status/2119049241457004711', name: '@satosi_kubo'};
 export const lifeOn = en => D.cardById.get(en?.id)?.baseId === 849 && en.life !== false;
 export const lifeAble = en => D.cardById.get(en?.id)?.baseId === 849;
 export const hifOk = (settings, baseId) => !!(settings || calcDefaults()).abilities?.HIF?.some(g => g.cards.includes(baseId));
