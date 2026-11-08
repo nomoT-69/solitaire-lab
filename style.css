@@ -347,3 +347,4 @@ ol.howto li:first-child { color: var(--ink); font-weight: 700; }
 .tgtwrap { display: flex; flex-direction: column; gap: 4px; }
 .tgtbtns { display: flex; gap: 6px; }
 .tgtbtns button.on { background: var(--acc2); border-color: var(--acc); font-weight: 700; }
+.cmnote { color: var(--faint); font-size: 12px; margin-top: 18px; }

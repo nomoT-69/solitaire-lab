@@ -58,7 +58,9 @@ export function renderDeck(root, rerender) {
     h('h3', 'P アイテム'),
     h('div.chips', dk.items.map(id => chip('items', id, D.items.find(x => x.id === id)?.name, () => { dk.items = dk.items.filter(x => x !== id); touch(); rerender(); }))),
     h('h3', 'P アイドル'),
-    h('div.chips', dk.pidol ? chip('pidols', dk.pidol, D.pidols.find(x => x.id === dk.pidol)?.name, () => { dk.pidol = null; touch(); rerender(); }) : h('span.empty', 'なし')));
+    h('div.chips', dk.pidol ? chip('pidols', dk.pidol, D.pidols.find(x => x.id === dk.pidol)?.name, () => { dk.pidol = null; touch(); rerender(); }) : h('span.empty', 'なし')),
+    // デッキの下に薄い灰色で（1.16.9、利用者の指示）
+    h('p.note.cmnote', 'cm燕のように全力を絡める場合について：このツールは1ターンだけのソリティアを想定しているため、全力の効果と、ターンをまたぐ効果（ソリティアのターンに発動するものは除く）は計算に入れていません。オバドラループを含めた計算はできません。オバドラを含む1ターンのソリティアは計算できます。'));
 
   // 検索
   const TABS = [['cards', '札'], ['drinks', 'ドリンク'], ['items', 'P アイテム'], ['pidols', 'P アイドル']];
