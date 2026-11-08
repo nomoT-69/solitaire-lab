@@ -145,7 +145,7 @@ export function renderSteps(root, rerender) {
       h('div.pathnav', {}, h('button.on', {}, '今のプレイの手順'), h('button', {onclick: () => { S.ui.stepPlay = false; save(); rerender(); }}, '手順の一覧から選ぶ'),
         h('span.hint', `ここまで ${played} 手（色の薄い行は、この先に起きやすい引きを選んだ場合）`)),
       h('p.pathsum', {class: end?.reached ? 'ok' : 'ng'}, end ? (end.cut ? 'この先は省略（ほかの引き）' : `この続きの終わりのスコア ${fmt(end.st?.score ?? end.score)}・${end.reached ? '目標に届く' : '目標に届かない'}`) : ''),
-      table(pr.map(r => { const t = tr(r); if (r.future) t.classList.add('future'); return t; })));
+      table(pr.map(r => { const t = tr(r); if (r.future) for (const x of [t].flat()) x.classList.add('future'); return t; })));   // ターン終わりの行があると tr は2行（配列）を返す
   } else if (mode === 'path') {
     const ps = paths(R.tree);
     const i = Math.max(0, Math.min(ps.length - 1, S.ui.stepPath || 0)), P = ps[i];
