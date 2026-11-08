@@ -119,7 +119,11 @@ export function renderTurn(root, rerender) {
           : h('span.hint', 'デッキにドリンクがありません'))),
     itemBox(),
     regBox(),
-    h('button.more', {onclick: () => { showMore = !showMore; rerender(); }}, (showMore ? '▾' : '▸') + ' 詳しい条件（直前の指針・回数・成長・前の局面）'),
+    // 成長（P アイテム・サポートなどで受けたスコア＋・回数＋）：点を数倍変えるので、詳しい条件から表に出した（1.16.4、利用者の要望）
+    h('div.items.growth', {}, growthBulk(P, all, touch),
+      h('p.hint', '成長（タフネス・一心不乱など）は、点が大きい局面では誤差なので空白でもかまいません。'),
+      (() => { const n = all.filter(en => { const a = P.assume[en.uid]; return a && (a.score || a.times); }).length; return n ? h('p.hint', `成長を入れてある札：${n}枚（札の左下の印）`) : null; })()),
+    h('button.more', {onclick: () => { showMore = !showMore; rerender(); }}, (showMore ? '▾' : '▸') + ' 詳しい条件（回数・前の局面など）'),
     showMore && moreBox());
 
   // P アイテムの入力欄：デッキの P アイテムのうち、入力の要るもの（発動済みの回数・カウンタ。エンジンの pItemInputs）と、試作・未対応の注記があるものだけ出す
@@ -177,10 +181,9 @@ export function renderTurn(root, rerender) {
     const hist = S.history.filter(x => x.deckId === dk.id);
     return h('div.more', {},
       h('div.hudrow', {},
-        h('label.hf', {}, h('span.sl', '直前の指針'), h('select', {onchange: e => setp('prevStance')(e.target.value)}, [['none', 'なし'], ...STANCES].map(([v, t]) => h('option', {value: v, selected: p.prevStance === v}, t)))),
+        // 直前の指針の欄は 1.16.4 でなくした（答えに影響しない。利用者の決定）。値は前の局面・次のターンから引き継いだものをそのまま渡す
         field('スコア上昇', 'scoreBuff', {step: 5, pct: true}), field('残りターン', 'turnsRemaining'), field('ドリンクの上限', 'drinkCap', {tip: 'このソリティアで使ってよいドリンクの本数（空欄＝上限なし）'}), field('ゲームの山札', 'gameDeckCount', {tip: 'ゲームの画面の山札の枚数。入れると、振り分けた山札の枚数と照らし合わせます'})),
       h('div.hudrow', {}, field('温存の回数', 'preservationTimes'), field('強気の回数', 'strengthTimes'), field('のんびりの回数', 'leisureTimes'), field('札の効果での指針変更', 'directStanceTimes')),
-      growthBulk(P, all, touch),
       h('h4', '局面の出し入れ'),
       h('div.row', {},
         hist.length ? sel('', '', [['', '前の局面から始める…'], ...hist.map((x, i) => [i, `${new Date(x.at).toLocaleString('ja-JP', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'})}　${x.label}`])],
@@ -199,24 +202,13 @@ export function renderTurn(root, rerender) {
     h('div.row', {}, h('b', P.carry.mid ? 'プレイの途中から作った局面です' : '前のターンの続きから作った局面です'), h('button.mini', {onclick: () => { delete P.carry; touch(); }}, '閉じる')),
     h('ul', {}, P.carry.warns.map(w => h('li.warn', w)), P.carry.notes.map(n => h('li', n))));
 
-  // 置き場：札のある置き場は枠で出し、空の置き場（保留・山札・捨て札・除外）は1行の小さな受け口にまとめる（ドラッグで入れられる）
-  const count = k => all.filter(e => zoneOf(P, e.uid) === k).length;
-  const miniZone = (k, title) => {
-    const box = h('div.zone.mini', {class: k, 'data-zone': k, title: title + 'は空です。札をここへドラッグするか、札を押して「' + title + 'へ」'}, h('b', title), h('span.cnt', '0枚'), h('small.dz', 'ここへ札をドラッグ'));
-    box.addEventListener('dragover', e => { e.preventDefault(); box.classList.add('dragover'); });
-    box.addEventListener('dragleave', () => box.classList.remove('dragover'));
-    box.addEventListener('drop', e => { e.preventDefault(); box.classList.remove('dragover'); const u = e.dataTransfer.getData('text/plain'); if (u) move(u, k); });
-    return box;
-  };
-  const empties = [['deck', '山札'], ['discard', '捨て札'], ['held', '保留'], ['removed', '除外']].filter(([k]) => !count(k));   // 山札・捨て札・保留の順（1.16.3、利用者の要望）。除外はその後
-  const isEmpty = k => empties.some(x => x[0] === k);
-  const piles = [['discard', '捨て札'], ['removed', '除外']].filter(([k]) => !isEmpty(k));
+  // 置き場：手札・保留／山札／捨て札・除外 の配置を固定する（空になっても場所は動かない。1.16.4、利用者の要望）。空の置き場はその場で「ここへドラッグ」の受け口になる
+  const handHint = '札を押すと置き場を選べます（キー 1:手札 2:保留 3:捨て札 4:除外 0:山札）。ドラッグでも動かせます';
   const left = h('div.turnleft', {}, carry, hud,
     h('section.panel.board', {},
-      isEmpty('held') ? zoneBox('hand', '手札', {size: 'large', limit: 5, hint: '札を押すと置き場を選べます（キー 1:手札 2:保留 3:捨て札 4:除外 0:山札）。ドラッグでも動かせます'}) : h('div.handrow', {}, zoneBox('hand', '手札', {size: 'large', limit: 5, hint: '札を押すと置き場を選べます（キー 1:手札 2:保留 3:捨て札 4:除外 0:山札）。ドラッグでも動かせます'}), zoneBox('held', '保留', {size: 'small', limit: 2})),
-      !isEmpty('deck') && zoneBox('deck', '山札', {hint: '山札＝デッキ全体 − ほかの置き場（自動で数えます）。札を押して「手札へ」'}),
-      piles.length ? h('div.pilerow', {class: piles.length === 1 ? 'one' : ''}, piles.map(([k, t]) => zoneBox(k, t))) : null,
-      empties.length ? h('div.emptyzones', {}, h('span.sl', '空の置き場（札をドラッグして入れられます）'), h('div.ezgrid', {}, empties.map(([k, t]) => miniZone(k, t)))) : null,
+      h('div.handrow', {}, zoneBox('hand', '手札', {size: 'large', limit: 5, hint: handHint}), zoneBox('held', '保留', {size: 'small', limit: 2})),
+      zoneBox('deck', '山札', {hint: '山札＝デッキ全体 − ほかの置き場（自動で数えます）。札を押して「手札へ」'}),
+      h('div.pilerow', {}, zoneBox('discard', '捨て札'), zoneBox('removed', '除外')),
       addBox));
   const right = h('aside.answer', {});
   renderAnswer(right, rerender);

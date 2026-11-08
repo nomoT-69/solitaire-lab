@@ -293,11 +293,11 @@ pre.license { font-size: 12px; background: var(--bg); border: 1px solid var(--li
 .computebox p.ok.compact { margin: 0 0 10px; font-size: 13px; }
 button.sec { background: var(--panel); color: var(--acc); border: 1.5px solid var(--acc); }
 button.sec:hover:not(:disabled) { background: var(--acc2); }
-.zone.empty { min-height: 0; padding: 6px 10px; }
+.zone.empty { min-height: 76px; padding: 8px 10px; }
 .zone.empty .drop { font-size: 12px; }
 .pilerow { align-items: start; }
 .kpinote { font-size: 12px; color: var(--sub); margin: 6px 0 4px; }
-.zone.empty .zc { min-height: 0; }
+.zone.empty .zc { min-height: 40px; display: flex; align-items: center; justify-content: center; }
 .zone.empty .drop { padding: 4px; }
 .subtabs button.menu { color: var(--ink); font-weight: 600; border: 1px solid var(--line2); }
 /* 1.6.0：空の置き場は1行の小さな受け口に */

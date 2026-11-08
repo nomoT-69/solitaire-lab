@@ -82,7 +82,7 @@ export function growthBulk(P, all, touch) {
     // 入れた（0でない）項目だけを変える。札ごとに入れた別の項目は残す
     const b = {...a}; for (const k of ['score', 'times']) if (bulk[k]) b[k] = mode === 'set' ? bulk[k] : (a[k] || 0) + bulk[k];
     P.assume[en.uid] = b; } touch(); };
-  return h('div.bulk', {}, h('h4', '成長をまとめて入れる'),
+  return h('div.bulk', {}, h('h4', '成長（スコア＋・回数＋をまとめて入れる）'),
     h('div.row', {}, sel('', bulk.who, [['active', 'アクティブ札'], ['mental', 'メンタル札'], ['all', 'すべての札']], v => { bulk.who = v; }),
       num('スコア +', bulk.score, v => { bulk.score = v || 0; }, {min: 0, width: 5}),
       num('回数 +', bulk.times, v => { bulk.times = v || 0; }, {min: 0, width: 4})),
