@@ -1,15 +1,15 @@
 // ソリティアの画面の右側：答えの欄。計算の前は「確かめ」と「計算する」、計算中は進み具合、計算の後は次の手とプレイの案内。
 // プレイの案内は同じ欄の中で進む（「使った」→「何を引いた？」→ 次の手）。比較表・自然さ・答えの確かさは「詳しく」にたたむ。
-import {eotOf} from './steps.js';
-import {D} from './data.js';
-import {S, save, deck, STANCES} from './store.js';
-import {h, pic, fmt, toast, qtip} from './ui.js';
-import {RUN, startRun, cancelRun, lastBudget, betterThan, resumeRun, canResume, phaseSig} from './run.js';
-import {validate, entries, zoneOf} from './phase.js';
-import {STATUS, orderText, critText} from './result.js';
-import {turnEnd, canExpand, expandSolve} from './solver.js';
-import {buildNextPhase, playPath} from './nextturn.js';
-import {copyReport} from './report.js';
+import {eotOf} from './steps.js?v=1.17.11';
+import {D} from './data.js?v=1.17.11';
+import {S, save, deck, STANCES} from './store.js?v=1.17.11';
+import {h, pic, fmt, toast, qtip} from './ui.js?v=1.17.11';
+import {RUN, startRun, cancelRun, lastBudget, betterThan, resumeRun, canResume, phaseSig} from './run.js?v=1.17.11';
+import {validate, entries, zoneOf} from './phase.js?v=1.17.11';
+import {STATUS, orderText, critText} from './result.js?v=1.17.11';
+import {turnEnd, canExpand, expandSolve} from './solver.js?v=1.17.11';
+import {buildNextPhase, playPath} from './nextturn.js?v=1.17.11';
+import {copyReport} from './report.js?v=1.17.11';
 
 const EXTRA_NAME = {ev: '期待最終点', floor: '最低最終点'};
 const num1 = x => x === null || x === undefined ? '—' : (Math.round(x * 10) / 10).toLocaleString('ja-JP');

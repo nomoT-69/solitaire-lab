@@ -1,9 +1,9 @@
 // 次のターンの局面：プレイでたどった最後の局面（worker.js の turnEndState）から、局面の入力（画面の形）を作る。
 // ゲームのターン終わりの動きに合わせる：手札は捨て札へ。保留・除外・山札・成長・ドリンク・指針・回数・P アイテムと継続効果のカウンタは引き継ぐ。
 // 次のターンに引いた札は、利用者が山札から手札へ動かす。ターンをまたいで変わる数（熱意・倍率・行動回数・目標点など）は、前の入力を残して確かめてもらう。
-import {D, startGrowthOf, itemInputs, hifSharedLimit, lifeOn, LIFE_TIMES} from './data.js';
+import {D, startGrowthOf, itemInputs, hifSharedLimit, lifeOn, LIFE_TIMES} from './data.js?v=1.17.11';
 const settingsOf = () => S.calcSettings;
-import {S, uid, newPhase, STANCES} from './store.js';
+import {S, uid, newPhase, STANCES} from './store.js?v=1.17.11';
 
 // 札の変種のキー（エンジンの cardVariant と同じ形：番号＋#cカスタマイズ＋#aアビリティ）
 export function variantKey(en) {

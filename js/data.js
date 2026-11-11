@@ -1,8 +1,8 @@
 // データの読み込みと検索。札などの本体は gakumas-tools の CSV をそのまま読む（計算エンジンと同じデータ）。
 // 開発中はリポジトリの計算の部品とデータを直接読む。公開の版（tools/build.mjs）では、下の2つの道筋を作り上がりの中の場所に書き換える。
-import {parseCsv, loadData, cardVariant} from '../engine/talos/data.mjs';
-import {defaultSettings as defaultCalcSettings, validateSettings, applySettings} from '../engine/talos/settings.mjs';
-import {unsupportedList, pItemInputs} from '../engine/talos/support.mjs';
+import {parseCsv, loadData, cardVariant} from '../engine/talos/data.mjs?v=1.17.11';
+import {defaultSettings as defaultCalcSettings, validateSettings, applySettings} from '../engine/talos/settings.mjs?v=1.17.11';
+import {unsupportedList, pItemInputs} from '../engine/talos/support.mjs?v=1.17.11';
 
 // 利用者が読み込んだ新しい gakumas-tools の CSV（データの更新）。このブラウザの中だけに保存する
 const CSV_KEY = 'aegis.csv.v1';

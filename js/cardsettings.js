@@ -1,11 +1,11 @@
 // 札の設定：HIF などのアビリティの効果、自作の札、データの上書き、データの更新（新しい CSV）、足した札の点検。
 // 中身はエンジンの settings.mjs の形（{version, abilities, overrides, customCards}）。入力のたびにエンジンの validateSettings で確かめる。
 // 保存はこのブラウザの中だけ（S.calcSettings）。ファイルへの書き出し・読み込みもできる。
-import {D, search, calcDefaults, checkCalcSettings, unsupported, syncCustomCards, CSV_FILES, loadUserCsv, saveUserCsv} from './data.js';
-import {S, save} from './store.js';
-import {h, toast} from './ui.js';
-import {loadData} from '../engine/talos/data.mjs';
-import {startInspect, cancelInspect} from './solver.js';
+import {D, search, calcDefaults, checkCalcSettings, unsupported, syncCustomCards, CSV_FILES, loadUserCsv, saveUserCsv} from './data.js?v=1.17.11';
+import {S, save} from './store.js?v=1.17.11';
+import {h, toast} from './ui.js?v=1.17.11';
+import {loadData} from '../engine/talos/data.mjs?v=1.17.11';
+import {startInspect, cancelInspect} from './solver.js?v=1.17.11';
 
 // よく使う効果の形（押すと効果の文字列に足す。{N} は数を聞く）
 const SNIPPETS = [['行動＋1', 'cardUsesRemaining+=1'], ['1枚ドロー', 'drawCard'], ['スコア＋N', 'score+={N}'], ['熱意＋N', 'enthusiasm+={N}'],

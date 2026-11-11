@@ -1,4 +1,4 @@
-import {lifeOn, LIFE_TIMES} from './data.js';
+import {lifeOn, LIFE_TIMES} from './data.js?v=1.17.11';
 // 局面の入力（画面の形）から、計算エンジン Tecnai の局面（setup）と目標点を作る。画面にもエンジンにも依らない、純粋な変換。
 // setup の形はエンジンの tecnai.mjs（createEngine）と AEGIS_SPEC.md 3章：
 //   {hand, deck, discard, removed, held（古い順）, drinks, drinkCap, pItems, registered, cardUses, stance, prevStance, enthusiasm,

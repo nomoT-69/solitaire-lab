@@ -13,8 +13,8 @@
 //  4. 「100%にできれば100%、できなければ届く最大の達成率」（criterion:'max'）では、前線ではなく辞書式の最良（P 最大 → 比べる順の残り）の
 //     1点だけを持つ。辞書式の目的は動的計画で分解できる（子ごとに最良を選べば全体も最良）。α を決めた比較（95/99/100%の表）は前線で求める。
 // 前提（v4 と同じ）：遷移で増える得点は現在点によらない（平行移動不変）。抜き取りで検査する。
-import {ZERO,ONE,R,add as addR,mul as mulR,cmp as cmpR,str,toNum} from '../src/rational.mjs';
-import {createEngine} from './tecnai.mjs';
+import {ZERO,ONE,R,add as addR,mul as mulR,cmp as cmpR,str,toNum} from '../src/rational.mjs?v=1.17.11';
+import {createEngine} from './tecnai.mjs?v=1.17.11';
 // 分数の速い経路（結果は rational.mjs と同じ既約分数）
 const add=(x,y)=>{if(x.n===0n)return y;if(y.n===0n)return x;if(x.d===y.d&&x.d===1n)return {n:x.n+y.n,d:1n};return addR(x,y);};
 const mul=(x,y)=>{if(x.n===0n||y.n===0n)return ZERO;if(x.n===x.d)return y;if(y.n===y.d)return x;if(x.d===1n&&y.d===1n)return {n:x.n*y.n,d:1n};return mulR(x,y);};
@@ -34,7 +34,7 @@ export function tecnaiModel(data,setup,target,options={}){
     branches(s,a){let bs=E.transition(s,a.raw??a).branches;if(co)bs=sortBranches(E,bs);return bs.map((b,index)=>({p:rat(b.p),pFloat:b.p[0]/b.p[1],s:b.s,index}));}};
 }
 // 層の上限で残す状態の順の見込み（heatCapScore）は talos/estimate.mjs へ移した。前の呼び方のため、ここからも出す（2026-11-04）
-export {heatCapScore} from './estimate.mjs';
+export {heatCapScore} from './estimate.mjs?v=1.17.11';
 export const sortActs=(E,cs)=>{const k=new Map(cs.map(a=>[a,E.canonAct(a.raw??a)]));return cs.sort((x,y)=>k.get(x)<k.get(y)?-1:k.get(x)>k.get(y)?1:0);};
 export const sortBranches=(E,bs)=>{const k=bs.map(b=>({b,c:E.canon(b.s)}));k.sort((x,y)=>x.c<y.c?-1:x.c>y.c?1:x.b.s.score-y.b.s.score);return k.map(x=>{x.b.canon=x.c;return x.b;});};
 

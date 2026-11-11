@@ -1,6 +1,6 @@
 // gakumas-tools の CSV（文字列）から、札・ドリンク・P アイテムの定義を作る。ブラウザでも使えるよう、ファイルは読まない
 // （Node では loadDataFromDir を使う）。各行の DSL は dsl.mjs で構文解析する。
-import {parseSequence} from './dsl.mjs';
+import {parseSequence} from './dsl.mjs?v=1.17.11';
 
 export function parseCsv(text){
   const rows=[];let row=[],f='',q=false;

@@ -1,8 +1,8 @@
 // 計算の流れ：局面 → setup → Web Worker → 結果（途中の暫定の答え・最終の答え・比較表）。実行中の様子は RUN（保存しない）に持つ
-import {D, itemInputs, staminaTriggered} from './data.js';
-import {S, save, deck} from './store.js';
-import {buildSetup} from './setup.js';
-import {startSolve, cancelSolve, resumeSolve, canResume} from './solver.js';
+import {D, itemInputs, staminaTriggered} from './data.js?v=1.17.11';
+import {S, save, deck} from './store.js?v=1.17.11';
+import {buildSetup} from './setup.js?v=1.17.11';
+import {startSolve, cancelSolve, resumeSolve, canResume} from './solver.js?v=1.17.11';
 export {canResume};
 
 let lastOpts = null;   // 最後に計算した予算（中止したときに残す）

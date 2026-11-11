@@ -14,12 +14,12 @@
 //   計算し直さずに答える（エンジンの job.follow、AEGIS_SPEC.md 9.1）。新しい局面が、前の局面で path をたどった局面と同じ（canon と残りの必要点が同じ、
 //   データ・比べ方も同じ）ときだけ使う。違えば（局面を直した など）、今までどおり計算する。result に followed:true が付く
 // 足した札の点検：{type:'inspect', id, csv, calcSettings, ids, opts:{cases, maxStates, maxMs}} → {type:'inspected', id, result}（エンジンの inspectCards の結果）
-import * as T from '../engine/talos/tomahawk.mjs';
-import * as A from '../engine/talos/aegis.mjs';
-import * as S from '../engine/talos/settings.mjs';
-import * as Q from '../engine/src/rational.mjs';
-import * as V from '../engine/src/policy-eval.mjs';
-import * as I from '../engine/talos/inspect.mjs';
+import * as T from '../engine/talos/tomahawk.mjs?v=1.17.11';
+import * as A from '../engine/talos/aegis.mjs?v=1.17.11';
+import * as S from '../engine/talos/settings.mjs?v=1.17.11';
+import * as Q from '../engine/src/rational.mjs?v=1.17.11';
+import * as V from '../engine/src/policy-eval.mjs?v=1.17.11';
+import * as I from '../engine/talos/inspect.mjs?v=1.17.11';
 
 // エンジンの形の確かめ（足りない関数があれば、計算せずに知らせる）
 const NEED = [[T, 'tecnaiModel'], [T, 'solveTomahawk'], [A, 'solveAegis'], [S, 'loadDataWithSettings'], [S, 'defaultSettings'], [Q, 'R'], [Q, 'parse'], [Q, 'toNum'], [Q, 'str'], [V, 'evalPolicyExact'], [I, 'inspectCards']];

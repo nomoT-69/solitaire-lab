@@ -5,9 +5,9 @@
 //    overrides:[{ids:[番号…], name:'名前の先頭', set:{type,once,rarity,plan,actions,effects,usable}, reason:'理由'}…],   … データの上書き
 //    customCards:[{id:負の番号, name, type:'active'|'mental', once:false, actions:'DSL', usable:'DSL（条件）'}…]}           … 自作の札
 // 既定の設定（defaultSettings）は、今コードに書いてある一覧（ABILITIES・OVERRIDES、自作の札なし）。設定を渡さないときの動きは今と同じ。
-import {parseSequence} from './dsl.mjs';
-import {loadData,ABILITIES,OVERRIDES,applyOverrides,addCustomCard,effectNames} from './data.mjs';
-import {itemProblems,cardProblems} from './support.mjs';
+import {parseSequence} from './dsl.mjs?v=1.17.11';
+import {loadData,ABILITIES,OVERRIDES,applyOverrides,addCustomCard,effectNames} from './data.mjs?v=1.17.11';
+import {itemProblems,cardProblems} from './support.mjs?v=1.17.11';
 export const SETTINGS_VERSION=1;
 const clone=x=>JSON.parse(JSON.stringify(x));
 // 既定の設定（今の固定の一覧）

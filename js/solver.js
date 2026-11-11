@@ -1,5 +1,5 @@
 // 画面の側から計算を動かす（Web Worker の起動・中止・知らせの受け取り）。計算中も画面は固まらない。
-import {D} from './data.js';
+import {D} from './data.js?v=1.17.11';
 
 // PC モード（serve.mjs --pc）：計算のスレッドを、この PC の Node のスレッドにする（Web Worker と同じ使い方。1.16.0）
 class PcWorker {
@@ -15,7 +15,7 @@ class PcWorker {
   terminate() { if (this.dead) return; this.dead = true; this.chain.then(() => { this.es?.close(); if (this.id) fetch(PC_BASE() + '__pc/kill?id=' + this.id, {method: 'POST'}); }); }
 }
 const PC_BASE = () => '/';
-const mkWorker = () => globalThis.PC_MODE ? new PcWorker() : new Worker(new URL('./worker.js', import.meta.url), {type: 'module'});
+const mkWorker = () => globalThis.PC_MODE ? new PcWorker() : new Worker(new URL('./worker.js?v=1.17.11', import.meta.url), {type: 'module'});
 
 let worker = null, seq = 0, H = null, resumable = false, followable = false, partial = false, expandCb = new Map(), expandSeq = 0;
 // handlers：{progress, update, result, table, error}。それぞれ worker からの知らせ（worker.js の先頭の説明）を受け取る

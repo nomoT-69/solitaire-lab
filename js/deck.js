@@ -1,8 +1,8 @@
 // 1. デッキ登録：札・ドリンク・P アイテム・P アイドルを名前（正式名・略称）で探して足す。保存して何度も使う
-import {D, search, hifOk, unsupported, PLAN_NAME, lifeOn, lifeAble} from './data.js';
-import {S, save, uid, deck, newDeck} from './store.js';
-import {h, pic, cardTile, popover, toast} from './ui.js';
-import {variantKey} from './nextturn.js';
+import {D, search, hifOk, unsupported, PLAN_NAME, lifeOn, lifeAble} from './data.js?v=1.17.11';
+import {S, save, uid, deck, newDeck} from './store.js?v=1.17.11';
+import {h, pic, cardTile, popover, toast} from './ui.js?v=1.17.11';
+import {variantKey} from './nextturn.js?v=1.17.11';
 
 let tab = 'cards', query = '', plusPref = true, withFree = true, resScroll = 0;
 // 札の絞り込み（複数選べる）。同じ種類の中は「どれか」、種類どうしは「両方」。何も選ばない種類は絞らない

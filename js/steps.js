@@ -4,9 +4,9 @@
 // 列は、見たいものにチェックを入れたものだけ出す（S.ui.stepCols。手順・手はいつも出す）。
 // 列：手順、手、ドロー札、このドローの確率、ここまでの確率、スコア（増えた分 → 累計）、熱意・熱意追加・熱意倍率・スコア上昇（増えた分 → 後の値）、
 //     指針、残り行動、残りのドリンク、この先の達成率。オプションで、継続効果（夏夜など）のカウンタと、その1手で出したスコア（火力）。分かれ（引いた札で手順が分かれるところ）は押すとたためる。CSV に書き出せる。
-import {S, STANCES, save} from './store.js';
-import {D} from './data.js';
-import {h, fmt} from './ui.js';
+import {S, STANCES, save} from './store.js?v=1.17.11';
+import {D} from './data.js?v=1.17.11';
+import {h, fmt} from './ui.js?v=1.17.11';
 
 const ST = Object.fromEntries(STANCES);
 const MAX_ROWS = 3000;

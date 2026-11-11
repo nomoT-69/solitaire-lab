@@ -1,9 +1,9 @@
 // 報告用の情報：テストする人が「おかしい」と思ったときに、版・設定・局面・答えを1つの文字列にしてコピーする（個人情報は入らない）。
-import {D, CONTACT} from './data.js';
-import {S, deck} from './store.js';
-import {buildSetup} from './setup.js';
-import {itemsFor} from './run.js';
-import {h} from './ui.js';
+import {D, CONTACT} from './data.js?v=1.17.11';
+import {S, deck} from './store.js?v=1.17.11';
+import {buildSetup} from './setup.js?v=1.17.11';
+import {itemsFor} from './run.js?v=1.17.11';
+import {h} from './ui.js?v=1.17.11';
 
 export function reportText(note = '') {
   const dk = deck();

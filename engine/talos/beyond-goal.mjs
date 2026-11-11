@@ -7,10 +7,10 @@
 //  - 止める（何もしない）も手の1つ（P は届いていれば1、期待得点0）。同じ値なら止める・先の手を選ぶ
 // 方策（DAG）を取り出し、policy-eval で計算し直した値（P・E[D]・E[A]・期待最終点・最低最終点）を答えにする（後ろ向きの値と一致を確かめる）。
 // 層の上限（layerCap）で絞ったときは、その範囲での最良（実際に打てる方策の正確な値。最適は未証明）。
-import {prepareTomahawk} from './tomahawk.mjs';
-import {heatCapScore} from './estimate.mjs';
-import {ZERO,ONE,R,add,mul,cmp,str,toNum} from '../src/rational.mjs';
-import {evalPolicyExact} from '../src/policy-eval.mjs';
+import {prepareTomahawk} from './tomahawk.mjs?v=1.17.11';
+import {heatCapScore} from './estimate.mjs?v=1.17.11';
+import {ZERO,ONE,R,add,mul,cmp,str,toNum} from '../src/rational.mjs?v=1.17.11';
+import {evalPolicyExact} from '../src/policy-eval.mjs?v=1.17.11';
 
 const LIMITS=['TIME_LIMIT','STATE_LIMIT','MEMORY_LIMIT','GROWTH_LIMIT'];
 // 作ったグラフ（prepareTomahawk の結果）で解く

@@ -1,8 +1,8 @@
 // 足した札の点検：指定した札を含むランダムな局面で、Talos と Tecnai を全状態で照合する（DESIGN.md 18章）。ブラウザでも動く（Node 専用の機能なし）。
 // 照合のしかたは bench/tecnai-diff.mjs と同じ（見える中身・数・効果の記録・山札の分布。山札の表し方の違いは比べない）。
 // 使い方：inspectCards(data, [札の番号…], {cases, maxStates, maxMs, seed}) → {cases, states, transitions, mismatches, examples, ms, stopped}
-import {createEngine as createTalos} from './engine.mjs';
-import {createEngine as createTecnai} from './tecnai.mjs';
+import {createEngine as createTalos} from './engine.mjs?v=1.17.11';
+import {createEngine as createTecnai} from './tecnai.mjs?v=1.17.11';
 const frac=s=>{const [n,d='1']=String(s).split('/');return Number(n)/Number(d);};
 function perms(a){const out=[];const cnt=new Map();for(const v of a)cnt.set(v,(cnt.get(v)||0)+1);const ks=[...cnt.keys()].sort();const cur=[];
   (function f(){if(cur.length===a.length){out.push(cur.slice());return;}for(const k of ks){const n=cnt.get(k);if(!n)continue;cnt.set(k,n-1);cur.push(k);f();cur.pop();cnt.set(k,n);}})();return out;}

@@ -1,15 +1,15 @@
 // Solitaire Lab（内部の名前 Pallas）の入口：データを読み、タブで画面を切り替える
-import {openRestore, importAnswer} from './restore.js';
-import {loadAll, D, syncCustomCards, CONTACT} from './data.js';
-import {S, save, deck, restoreTrees} from './store.js';
-import {h, closePop, popover} from './ui.js';
-import {copyReport} from './report.js';
-import {renderDeck} from './deck.js';
-import {renderTurn} from './turn.js';
-import {renderSettings} from './settings.js';
-import {renderCredits} from './credits.js';
-import {renderCardSettings} from './cardsettings.js';
-import {setRerender} from './run.js';
+import {openRestore, importAnswer} from './restore.js?v=1.17.11';
+import {loadAll, D, syncCustomCards, CONTACT} from './data.js?v=1.17.11';
+import {S, save, deck, restoreTrees} from './store.js?v=1.17.11';
+import {h, closePop, popover} from './ui.js?v=1.17.11';
+import {copyReport} from './report.js?v=1.17.11';
+import {renderDeck} from './deck.js?v=1.17.11';
+import {renderTurn} from './turn.js?v=1.17.11';
+import {renderSettings} from './settings.js?v=1.17.11';
+import {renderCredits} from './credits.js?v=1.17.11';
+import {renderCardSettings} from './cardsettings.js?v=1.17.11';
+import {setRerender} from './run.js?v=1.17.11';
 
 // 主な画面（毎ターン使うソリティア、ときどき使うデッキ）と、たまに使う画面（右に小さく）
 const MAIN = [['turn', 'ソリティア', renderTurn], ['deck', 'デッキ', renderDeck]];

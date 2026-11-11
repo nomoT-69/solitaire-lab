@@ -1,8 +1,8 @@
 // 局面の部品（画面は turn.js）：局面の用意、札の置き場、成長の前提、入力の確かめ、成長をまとめて入れる。山札＝デッキ全体−ほかの置き場（自動）
-import {D, checkCalcSettings, unsupported, itemInputs} from './data.js';
-import {firedOf} from './setup.js';
-import {S, save, deck, newPhase, defaultParams} from './store.js';
-import {h, num, sel} from './ui.js';
+import {D, checkCalcSettings, unsupported, itemInputs} from './data.js?v=1.17.11';
+import {firedOf} from './setup.js?v=1.17.11';
+import {S, save, deck, newPhase, defaultParams} from './store.js?v=1.17.11';
+import {h, num, sel} from './ui.js?v=1.17.11';
 
 export const MAX_DRINKS = 4;   // 持てるドリンクの本数の上限（利用者の決定 2026-11-03）
 export const ZONES = [['hand', '手札', '1'], ['held', '保留', '2'], ['discard', '捨て札', '3'], ['removed', '除外', '4'], ['deck', '山札（自動）', '0']];

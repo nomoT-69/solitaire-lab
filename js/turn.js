@@ -1,13 +1,13 @@
 // ソリティアの画面（毎ターン使う画面）：左に局面（上部の数値の欄、手札、置き場）、右に答え（計算・次の手・プレイの案内）。
 // 札は押して置き場を選ぶ（キー 1:手札 2:保留 3:捨て札 4:除外 0:山札）か、置き場へドラッグする。山札＝デッキ全体−ほかの置き場（自動）。
-import {D, search, itemInputs, staminaTriggered, hifSharedLimit, hifSharedKind, hifOldStyle, hifOk, lifeOn, lifeAble} from './data.js';
-import {firedOf} from './setup.js';
-import {S, save, uid, deck, newPhase, STANCES} from './store.js';
-import {h, pic, cardTile, popover, num, sel, toast, qtip} from './ui.js';
-import {ensurePhase, entries, zoneOf, growthOf, extraGrowth, setAssume, ZONES, ZNAME, MAX_DRINKS, growthBulk, fpNeeds} from './phase.js';
-import {renderAnswer, isStale} from './answer.js';
-import {renderSteps} from './steps.js';
-import {currentSetup} from './run.js';
+import {D, search, itemInputs, staminaTriggered, hifSharedLimit, hifSharedKind, hifOldStyle, hifOk, lifeOn, lifeAble} from './data.js?v=1.17.11';
+import {firedOf} from './setup.js?v=1.17.11';
+import {S, save, uid, deck, newPhase, STANCES} from './store.js?v=1.17.11';
+import {h, pic, cardTile, popover, num, sel, toast, qtip} from './ui.js?v=1.17.11';
+import {ensurePhase, entries, zoneOf, growthOf, extraGrowth, setAssume, ZONES, ZNAME, MAX_DRINKS, growthBulk, fpNeeds} from './phase.js?v=1.17.11';
+import {renderAnswer, isStale} from './answer.js?v=1.17.11';
+import {renderSteps} from './steps.js?v=1.17.11';
+import {currentSetup} from './run.js?v=1.17.11';
 
 let showMore = false;
 

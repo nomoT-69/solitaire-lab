@@ -1,11 +1,11 @@
 // 報告から局面を戻す：「報告用の情報をコピー」の文（【Solitaire Lab 報告用】{…}）を貼ると、その局面を新しいデッキと局面として作る。
 // 報告の setup（計算の部品の形、setup.js の buildSetup の出力）を、画面の形（デッキ・局面）に戻す。戻したあと buildSetup で作り直し、
 // 報告の setup と同じになるかを確かめる（違えばその旨を出す）。設定（予算など）は変えない（1.13.0、利用者の指示）
-import {D, LIFE_TIMES} from './data.js';
-import {S, save, uid, newDeck, newPhase} from './store.js';
-import {buildSetup} from './setup.js';
-import {itemsFor} from './run.js';
-import {h, toast} from './ui.js';
+import {D, LIFE_TIMES} from './data.js?v=1.17.11';
+import {S, save, uid, newDeck, newPhase} from './store.js?v=1.17.11';
+import {buildSetup} from './setup.js?v=1.17.11';
+import {itemsFor} from './run.js?v=1.17.11';
+import {h, toast} from './ui.js?v=1.17.11';
 
 export function parseReport(text) {
   const i = text.indexOf('{');

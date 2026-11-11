@@ -12,9 +12,9 @@
 //  5. DSL の式は、読み込み時に関数へ変換する。札の対象の判定は、札の種類ごとに覚える。
 //  6. 読まれない数（直前の指針、指針の回数、札の使用回数など）は、その局面で読む札・効果がなければキーに入れない（状態が減る）。
 //     局面に出うる札（初期の札、山札に入る札、青汁の候補）の DSL を読み込み時に調べて決める。
-import {cardVariant,sharedAbilityItem,LATE_CARD_USED_EFFECTS} from './data.mjs';
+import {cardVariant,sharedAbilityItem,LATE_CARD_USED_EFFECTS} from './data.mjs?v=1.17.11';
 const LATE_IDS=new Set(LATE_CARD_USED_EFFECTS.flatMap(x=>x.ids));   // 実ゲームで確かめた発動の順の違い（data.mjs の台帳）
-import {CM,COST_FIELDS,staminaLoss,applyCostField} from './engine.mjs';   // 体力消費の補正（Talos と同じ計算）
+import {CM,COST_FIELDS,staminaLoss,applyCostField} from './engine.mjs?v=1.17.11';   // 体力消費の補正（Talos と同じ計算）
 const gcd=(a,b)=>{while(b){const t=a%b;a=b;b=t;}return a;};
 function q(n,d){if(!Number.isSafeInteger(n)||!Number.isSafeInteger(d)||d<=0)throw Error('TALOS_RATIONAL_OVERFLOW');const g=gcd(n,d);return g===1?[n,d]:[n/g,d/g];}
 const qmul=(a,b)=>a[0]===1&&a[1]===1?b:b[0]===1&&b[1]===1?a:q(a[0]*b[0],a[1]*b[1]);
@@ -943,4 +943,4 @@ export function createEngine(data,setup,options={}){
 function distinctPerms(a){const out=[];const cnt=new Map();for(const x of a)cnt.set(x,(cnt.get(x)||0)+1);const keys=[...cnt.keys()].sort((x,y)=>x-y);const cur=[];
   (function f(){if(cur.length===a.length){out.push(cur.slice());return;}for(const k of keys){const n=cnt.get(k);if(!n)continue;cnt.set(k,n-1);cur.push(k);f();cur.pop();cnt.set(k,n);}})();return out;}
 
-export {loadDataFromDir} from './engine.mjs';
+export {loadDataFromDir} from './engine.mjs?v=1.17.11';

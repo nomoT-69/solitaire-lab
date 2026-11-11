@@ -8,7 +8,7 @@
 //
 // 遷移は「枝の並び」[{p:[分子,分母], s:状態}] に対して、行動を1つずつ当てていく。ドローなど確率で分かれる行動は枝を増やし、
 // 同じ状態になった枝は確率を足してまとめる。
-import {cardVariant,sharedAbilityItem,LATE_CARD_USED_EFFECTS} from './data.mjs';
+import {cardVariant,sharedAbilityItem,LATE_CARD_USED_EFFECTS} from './data.mjs?v=1.17.11';
 const LATE_IDS=new Set(LATE_CARD_USED_EFFECTS.flatMap(x=>x.ids));   // 実ゲームで確かめた発動の順の違い（data.mjs の台帳）
 const gcd=(a,b)=>{while(b){const t=a%b;a=b;b=t;}return a;};
 function q(n,d){if(!Number.isSafeInteger(n)||!Number.isSafeInteger(d)||d<=0)throw Error('TALOS_RATIONAL_OVERFLOW');const g=gcd(n,d);return [n/g,d/g];}
@@ -729,9 +729,9 @@ export function createEngine(data,setup,options={}){
 // Node 用：data/gakumas-tools/csv から読み込む
 // settings：利用者の設定（talos/settings.mjs）。渡さなければ今までと同じ（既定の上書き OVERRIDES を当てる）
 export async function loadDataFromDir(dirUrl,settings=null){
-  const {readFile}=await import('node:fs/promises');const {loadData,applyOverrides}=await import('./data.mjs');
+  const {readFile}=await import('node:fs/promises');const {loadData,applyOverrides}=await import('./data.mjs?v=1.17.11');
   const r=f=>readFile(new URL(f,dirUrl),'utf8');
   const csv={skillCards:await r('skill_cards.csv'),pDrinks:await r('p_drinks.csv'),pItems:await r('p_items.csv'),customizations:await r('customizations.csv')};
-  if(settings){const {applySettings}=await import('./settings.mjs');return applySettings(loadData(csv),settings);}
+  if(settings){const {applySettings}=await import('./settings.mjs?v=1.17.11');return applySettings(loadData(csv),settings);}
   return applyOverrides(loadData(csv));   // 実ゲームでの確認による上書きを当てる   // 実ゲームでの確認による上書きを当てる
 }

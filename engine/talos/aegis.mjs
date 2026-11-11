@@ -7,10 +7,10 @@
 //  4) 予算を超えたら、Tomahawk の層の上限（layerCap）を 2万 → 10万 → 30万 と広げて、暫定の答えを時間の許すかぎり良くする。
 //     どれも実際に打てる方策で、値は厳密（検証済み）。最適は未証明。暫定が良くなるたびに onUpdate(結果) を呼ぶ（GUI が途中の答えを出せる）。
 //  証明できた範囲：暫定の達成率が 1 なら、達成率は最大（100%）と証明済み。
-import {DEFAULT_ORDER,solveTomahawk,solveTomahawkAuto,tecnaiModel} from './tomahawk.mjs';
-import {heatCapScore} from './estimate.mjs';
-import {solveJavelin,javelinSupports,betterBest} from './javelin.mjs';
-import {solveBeyondGoal} from './beyond-goal.mjs';
+import {DEFAULT_ORDER,solveTomahawk,solveTomahawkAuto,tecnaiModel} from './tomahawk.mjs?v=1.17.11';
+import {heatCapScore} from './estimate.mjs?v=1.17.11';
+import {solveJavelin,javelinSupports,betterBest} from './javelin.mjs?v=1.17.11';
+import {solveBeyondGoal} from './beyond-goal.mjs?v=1.17.11';
 export {tecnaiModel};
 const summarizeV=v=>{const o={};for(const k of ['p','d','a']){o[k]=str(v[k]);o[k+'Num']=toNum(v[k]);}if(v.ev!==undefined){o.ev=str(v.ev);o.evNum=toNum(v.ev);}if(v.fl!==undefined){o.floor=str(v.fl);o.floorNum=toNum(v.fl);}return o;};
 // 暫定の答えを軽くする（opts.compact、既定 true。2026-11-04）：方策の DAG を取り出して持ち、ソルバのグラフ・曲線を手放す。
@@ -240,7 +240,7 @@ export function createAegisJob(model,opts={}){
 // 解けて、今の部分方策より辞書式（P → 比べる順の残り → 自然さ）で良ければ差し替える。届く最大の基準では、ある局面の値が良くなれば、
 // 根の値も必ず良くなる（P は確率で重みを付けた和、P が同じなら D・A も同じ）。差し替えた後の値は、木の上で有理数で計算し直す（推定は使わない）。
 // α を決めた比較（95/99/100%）は局面ごとに分けて比べられないので、使わない（届く最大の基準だけ）。
-import {ZERO,ONE,R,add,sub,mul,cmp,str,toNum} from '../src/rational.mjs';
+import {ZERO,ONE,R,add,sub,mul,cmp,str,toNum} from '../src/rational.mjs?v=1.17.11';
 const sameAct=(a,b)=>JSON.stringify(a.raw??a)===JSON.stringify(b);
 // 方策の DAG（extract の形）を、状態つきの木にする
 function policyTree(model,dag){

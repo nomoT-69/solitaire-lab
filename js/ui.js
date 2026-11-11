@@ -1,6 +1,6 @@
 // 画面の部品（DOM を作る小さな関数、札の絵、浮かぶメニュー、知らせ）
-import {D, has, imgUrl} from './data.js';
-import {S} from './store.js';
+import {D, has, imgUrl} from './data.js?v=1.17.11';
+import {S} from './store.js?v=1.17.11';
 
 export function h(tag, attrs = {}, ...kids) {
   if (attrs === null || typeof attrs !== 'object' || attrs instanceof Node || Array.isArray(attrs)) { kids.unshift(attrs); attrs = {}; }

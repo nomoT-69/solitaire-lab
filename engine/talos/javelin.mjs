@@ -9,8 +9,8 @@
 //    各分岐が目標に届くかどうかの境目の、共通部分（その中では、同じ計算をたどるので同じ答えになる）。
 //  ・自然さの指標は tiebreak（ev・floor・ev→floor）に対応する。floor→ev（重い方式）は Tomahawk を使う。
 //  ・beam>0 は、各局面で試す手を、順番の上位 beam 個に限る（暫定の答えを速く作るため。答えは「その手の範囲での最良」で、検証済みの方策になる）。
-import {ZERO,ONE,R,add as addR,mul as mulR,cmp as cmpR,str,toNum} from '../src/rational.mjs';
-import {heatCapScore} from './estimate.mjs';
+import {ZERO,ONE,R,add as addR,mul as mulR,cmp as cmpR,str,toNum} from '../src/rational.mjs?v=1.17.11';
+import {heatCapScore} from './estimate.mjs?v=1.17.11';
 const add=(x,y)=>{if(x.n===0n)return y;if(y.n===0n)return x;if(x.d===y.d&&x.d===1n)return {n:x.n+y.n,d:1n};return addR(x,y);};
 const mul=(x,y)=>{if(x.n===0n||y.n===0n)return ZERO;if(x.n===x.d)return y;if(y.n===y.d)return x;if(x.d===1n&&y.d===1n)return {n:x.n*y.n,d:1n};return mulR(x,y);};
 const cmp=(x,y)=>{if(x===y)return 0;if(x.d===y.d)return x.n<y.n?-1:x.n>y.n?1:0;return cmpR(x,y);};
