@@ -1,15 +1,11 @@
-// 足した札の点検：指定した札を含むランダムな局面で、Talos と Tecnai を全状態で照合する（DESIGN.md 18章）。ブラウザでも動く（Node 専用の機能なし）。
-// 照合のしかたは bench/tecnai-diff.mjs と同じ（見える中身・数・効果の記録・山札の分布。山札の表し方の違いは比べない）。
-// 使い方：inspectCards(data, [札の番号…], {cases, maxStates, maxMs, seed}) → {cases, states, transitions, mismatches, examples, ms, stopped}
-import {createEngine as createTalos} from './engine.mjs?v=1.17.11';
-import {createEngine as createTecnai} from './tecnai.mjs?v=1.17.11';
+import {createEngine as createTalos} from './engine.mjs?v=1.17.12';
+import {createEngine as createTecnai} from './tecnai.mjs?v=1.17.12';
 const frac=s=>{const [n,d='1']=String(s).split('/');return Number(n)/Number(d);};
 function perms(a){const out=[];const cnt=new Map();for(const v of a)cnt.set(v,(cnt.get(v)||0)+1);const ks=[...cnt.keys()].sort();const cur=[];
   (function f(){if(cur.length===a.length){out.push(cur.slice());return;}for(const k of ks){const n=cnt.get(k);if(!n)continue;cnt.set(k,n-1);cur.push(k);f();cur.pop();cnt.set(k,n);}})();return out;}
 const r12=v=>Number(v).toPrecision(12);
 const ordStr=m=>[...m].filter(([,p])=>p>1e-15).map(([k,p])=>k+'='+r12(p)).sort().join(';');
 const put=(m,k,p)=>m.set(k,(m.get(k)||0)+p);
-// 山札の分布（8枚以下は並び全体、9枚以上は上3枚と一番下の分布）。Talos：位置の並び（mask）、Tecnai：区間（segs）
 function deckSig(v,kind){
   const content=[];const c0=v.deck[0];content.push(...c0.bag);if(kind==='talos')content.push(...c0.mask.filter(m=>m!=='*'));else for(const g of c0.segs)content.push(...g.fixed);
   if(content.length<=8){const out=new Map();
@@ -33,7 +29,6 @@ function deckSig(v,kind){
       const g=c.segs[c.segs.length-1],m=g.stars+g.fixed.length;for(const x of g.fixed)put(bot,x,w/m);if(g.stars)for(const b of c.bag)put(bot,b,w*g.stars/m/c.bag.length);}}
   return '~'+content.sort().join(',')+'|'+ordStr(top)+'|'+ordStr(bot);
 }
-// 1つの局面を、2つのエンジンで全状態を照合する。返り値 {states, transitions, mismatches, examples}
 export function compareSetup(data,setup,{maxStates=2000,engines={talos:createTalos,tecnai:createTecnai},deadline=Infinity}={}){
   const res={states:0,transitions:0,mismatches:0,examples:[],unsupported:0};
   let A,B;try{A=engines.talos(data,setup);}catch(e){res.loadError=e.message;return res;}
@@ -70,25 +65,20 @@ export function compareSetup(data,setup,{maxStates=2000,engines={talos:createTal
     q=nq;}
   return res;
 }
-// 照合に混ぜる、ふつうの札（Talos・Tecnai で確かめ済みの範囲）
 export const FILLER_CARDS=[390,391,408,409,749,750,590,591,716,717,438,439,98,99,160,161,418,419,422,423,436,437,518,519,702,703,556,557,745,746,392,393,23];
 export const FILLER_DRINKS=[7,8,12,13,14,17,18,26];
-// 札の指定の名前（例「精一杯＋HIF」「エンターテイナー+［カスタマイズ 2:1］（成長しきり）」）
 export function cardSpecName(data,spec){
   const x=typeof spec==='number'?{id:spec}:spec;const c=data.cards.get(x.id);if(!c)return null;
   const ab=x.hif?['HIF']:(x.abilities||[]);const cs=x.c11n?Object.entries(x.c11n).filter(([,v])=>Number(v)>0).map(([k,v])=>k+':'+v):[];
   return c.name+ab.map(a=>'＋'+a).join('')+(cs.length?'［カスタマイズ '+cs.join(',')+'］':'')+(x.grown==='full'?'（成長しきり）':'')+
     (x.g&&(x.g.score||x.g.scoreTimes)?'〔成長 '+(x.g.score||0)+'/'+(x.g.scoreTimes||0)+'〕':'')+(x.limits?'（残り回数 '+x.limits.join(',')+'）':'');
 }
-// 指定した札を含むランダムな局面で照合する。札の指定は、番号（自作の札の負の番号も可）か、局面の札と同じ形
-// {id, hif:true}／{id, abilities:['HIF']}／{id, c11n:{番号:段階}}（grown・g・limits も可）。局面にはそのまま入れる
 export function inspectCards(data,ids,{cases=40,maxStates=2000,maxMs=60000,seed=1,engines}={}){
   const t0=Date.now(),deadline=t0+maxMs;let x=seed>>>0;
   const rnd=()=>{x+=0x6D2B79F5;let t=x;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296;};
   const pick=a=>a[Math.floor(rnd()*a.length)],int=(a,b)=>a+Math.floor(rnd()*(b-a+1));
   const idOf=x=>typeof x==='number'?x:x?.id;
   const missing=ids.filter(x=>!data.cards.has(idOf(x)));if(missing.length)return {error:'存在しない札の番号：'+missing.map(idOf).join(', '),cases:0};
-  // 札の指定が読み込めるか（アビリティを付けられない札、カスタマイズの段階の誤りなど）を、先に Talos で確かめる
   const tal=engines?.talos??createTalos;
   for(const x of ids){if(typeof x==='number')continue;try{tal(data,{hand:[x],deck:[23]});}catch(e){return {error:'札の指定を読み込めません（'+cardSpecName(data,x)+'）：'+e.message,cases:0};}}
   const total={cards:ids.map(x=>({id:idOf(x),spec:x,name:cardSpecName(data,x)})),cases:0,states:0,transitions:0,mismatches:0,examples:[],loadErrors:[],unsupported:0,ms:0,stopped:null};
@@ -98,7 +88,7 @@ export function inspectCards(data,ids,{cases=40,maxStates=2000,maxMs=60000,seed=
     const setup={hand:zone(int(0,3)),deck:zone(int(1,5)),discard:zone(int(0,2)),held:[],drinks:Array.from({length:int(0,2)},()=>pick(FILLER_DRINKS)),
       cardUses:int(1,3),stance:pick(['preservation','preservation2','leisure','strength','strength2']),enthusiasm:int(0,10),enthusiasmBonus:int(0,3),
       preservationTimes:int(0,3),strengthTimes:int(0,5),stanceChangedByDirectEffectTimes:int(0,4)};
-    for(const id of ids){const where=pick(['hand','hand','deck','discard']);setup[where].push(id);}   // 指定した札は必ず1枚ずつ入れる（手札が多め）
+    for(const id of ids){const where=pick(['hand','hand','deck','discard']);setup[where].push(id);}
     const r=compareSetup(data,setup,{maxStates,engines,deadline});
     if(r.loadError){if(total.loadErrors.length<5)total.loadErrors.push(r.loadError);continue;}
     total.cases++;total.states+=r.states;total.transitions+=r.transitions;total.mismatches+=r.mismatches;total.unsupported+=r.unsupported;

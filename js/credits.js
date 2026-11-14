@@ -1,7 +1,6 @@
-// クレジットと注意：データの出典とライセンス、画像の権利、計算の前提、答えの種類の意味、非公式のファンツールであること
-import {D, CONTACT} from './data.js?v=1.17.11';
-import {h} from './ui.js?v=1.17.11';
-import {STATUS} from './result.js?v=1.17.11';
+import {D, CONTACT} from './data.js?v=1.17.12';
+import {h} from './ui.js?v=1.17.12';
+import {STATUS} from './result.js?v=1.17.12';
 
 export function renderCredits(root) {
   const v = D.version;

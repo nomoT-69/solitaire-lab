@@ -1,7 +1,4 @@
-/* Aegis の見た目。考え方（2026-11-03 作り直し）：
-   - 毎ターン使う「ソリティア」の画面を主役に。答え（次の手）は右に常に見える。
-   - 色は意味のあるところだけ：指針（強気＝赤、温存＝青、のんびり＝緑）、答えの種類（最適＝緑、暫定＝黄、未完了＝赤）、主な操作（アクセント）。
-   - 文字は 15px を基本に、ラベルも薄くしすぎない。説明は減らし、必要なものは吹き出し（title）へ。 */
+
 :root {
   --bg: #f3f4f7; --panel: #fff; --ink: #1b1f2a; --sub: #4c5466; --faint: #8a91a1; --line: #dfe2ea; --line2: #c9cdd8;
   --acc: #d6336c; --acc-ink: #fff; --acc2: #fde8ef;
@@ -38,8 +35,6 @@ h2.mt { margin-top: 18px; }
 kbd { font-size: 11px; border: 1px solid var(--line2); border-radius: 3px; padding: 0 4px; margin-right: 6px; color: var(--sub); }
 pre { white-space: pre-wrap; font-size: 13px; }
 code { font-size: 13px; }
-
-/* ヘッダー：主な画面（ソリティア・デッキ）を大きく、たまに使う画面は右に小さく */
 header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 18px; padding: 0 18px; height: 54px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .brand { font-weight: 800; font-size: 19px; letter-spacing: .02em; }
 .tabs { display: flex; gap: 2px; height: 100%; }
@@ -63,14 +58,10 @@ footer { color: var(--faint); font-size: 12px; text-align: center; padding: 8px 
 .setcols { grid-template-columns: 1fr 1.4fr 1fr; }
 .cscols { grid-template-columns: 1.2fr 1fr; }
 @media (max-width: 1150px) { .deckcols, .setcols, .cscols { grid-template-columns: 1fr; } }
-
-/* ===== ソリティアの画面 ===== */
 .turn { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 14px; align-items: start; }
 @media (max-width: 1150px) { .turn { grid-template-columns: 1fr; } }
 .answer { position: sticky; top: 66px; max-height: calc(100vh - 78px); overflow: auto; }
 .empty-start { max-width: 520px; margin: 40px auto; text-align: center; }
-
-/* 上部の数値の欄 */
 .hud { padding: 12px 16px; }
 .hudrow { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: flex-end; margin-bottom: 10px; }
 .sl { display: block; font-size: 12px; color: var(--sub); margin-bottom: 3px; font-weight: 600; }
@@ -100,8 +91,6 @@ button.more { border: none; background: none; color: var(--sub); padding: 2px 0;
 .inm { min-width: 8em; }
 .carry { background: var(--infobg); border: 1px solid var(--info); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 12px; font-size: 14px; }
 .carry ul { margin: 4px 0; padding-left: 1.2em; } .carry li.warn { color: var(--warn); font-weight: 600; }
-
-/* 置き場 */
 .board { padding: 12px 14px; }
 .handrow { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 10px; }
 .pilerow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -116,8 +105,6 @@ button.more { border: none; background: none; color: var(--sub); padding: 2px 0;
 .drop { color: var(--faint); font-size: 13px; padding: 18px 4px; }
 .addextra summary { cursor: pointer; color: var(--sub); font-size: 13px; font-weight: 600; }
 .addextra input { margin: 6px 0; }
-
-/* 札 */
 .card { border: 1px solid var(--line2); border-radius: 9px; background: var(--panel); cursor: pointer; position: relative; user-select: none; overflow: hidden; display: flex; flex-direction: column; align-items: center; padding-bottom: 4px; }
 .card:hover { border-color: var(--acc); box-shadow: 0 2px 8px rgba(214, 51, 108, .18); }
 .card.dragging { opacity: .35; }
@@ -142,8 +129,6 @@ button.more { border: none; background: none; color: var(--sub); padding: 2px 0;
 .mark.part { color: var(--warn); background: var(--warnbg); border-color: var(--warn); }
 .mark.grow { color: var(--info); background: var(--infobg); border-color: transparent; }
 .mark.ext { color: var(--sub); border-color: var(--line2); }
-
-/* 答えの欄 */
 .ans { padding: 16px; }
 .ansHead { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .lbl { font-size: 13px; font-weight: 700; color: var(--sub); margin: 6px 0 2px; }
@@ -187,8 +172,6 @@ button.more { border: none; background: none; color: var(--sub); padding: 2px 0;
 .tbl td.n { text-align: right; font-variant-numeric: tabular-nums; }
 .tbl tr.cur { background: var(--acc2); font-weight: 700; }
 .tbl.narrow { width: auto; }
-
-/* デッキの画面 */
 .decklist { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .deckbtn { text-align: left; display: flex; flex-direction: column; }
 .deckbtn.on { border-color: var(--acc); background: var(--acc2); }
@@ -212,15 +195,11 @@ button.plan { border-radius: 0; } button.plan.on { color: #fff; font-weight: 700
 button.plan.pl-anomaly.on { background: #8e44c9; border-color: #8e44c9; }
 button.plan.pl-sense.on { background: var(--str); border-color: var(--str); }
 button.plan.pl-logic.on { background: var(--pres); border-color: var(--pres); }
-
-/* 入力（設定など） */
 .f { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
 .fl { min-width: 6.5em; color: var(--sub); font-size: 13px; font-weight: 600; }
 .fl2 { color: var(--sub); font-size: 13px; margin-top: 6px; font-weight: 600; }
 input.wide { flex: 1; min-width: 16em; }
 .bulk { border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; margin-top: 8px; }
-
-/* 浮かぶメニュー */
 .pop { position: absolute; z-index: 50; background: var(--panel); border: 1px solid var(--line2); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.2); padding: 6px; min-width: 220px; display: flex; flex-direction: column; gap: 2px; }
 .pop-t { font-weight: 800; padding: 2px 6px 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
 .pop-i { text-align: left; border: none; }
@@ -229,8 +208,6 @@ input.wide { flex: 1; min-width: 16em; }
 .pop-sub { font-size: 12px; color: var(--sub); padding: 6px 6px 0; border-top: 1px solid var(--line); margin-top: 4px; }
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--panel); padding: 9px 18px; border-radius: 9px; transition: opacity .4s; z-index: 60; }
 .toast.out { opacity: 0; }
-
-/* 札の設定 */
 .csprob { position: sticky; top: 62px; z-index: 5; max-height: 30vh; overflow: auto; }
 .group { border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; margin: 8px 0; }
 .ability h3 { display: flex; gap: 8px; align-items: center; }
@@ -241,8 +218,6 @@ textarea.dsl, textarea.json { width: 100%; font: 13px/1.45 ui-monospace, Consola
 .pickres { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .ovrow { display: flex; gap: 6px; align-items: flex-start; margin: 4px 0; } .ovrow .effin { flex: 1; }
 ul.unsup { font-size: 13px; max-height: 300px; overflow: auto; }
-
-/* クレジット */
 .credits { max-width: 900px; margin: 0 auto; }
 .credits li { margin: 4px 0; }
 pre.license { font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 8px; overflow: auto; }
@@ -257,8 +232,6 @@ pre.license { font-size: 12px; background: var(--bg); border: 1px solid var(--li
 .hcard.new { outline: 2.5px solid var(--acc); }
 .hcard.old { opacity: .45; }
 .handtxt { font-size: 11px; color: var(--sub); line-height: 1.3; }
-
-/* 全手順（詳細） */
 .steps { margin-top: 14px; }
 .steps h2 { margin: 0; }
 .stepbtn, .stepsbtn { margin-top: 8px; }
@@ -272,7 +245,6 @@ pre.license { font-size: 12px; background: var(--bg); border: 1px solid var(--li
 .steptbl tr.sib td.act { color: var(--faint); }
 .midbtn { margin-top: 6px; }
 .subtabs a.manual { color: var(--acc); font-size: 14px; font-weight: 700; padding: 4px 10px; text-decoration: none; border-radius: 6px; } .subtabs a.manual:hover { background: var(--acc2); }
-/* 全手順：列の選択・手順の切り替え（1.3.0） */
 .colpick { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin: 8px 0; font-size: 13px; }
 .pathnav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 4px; }
 .pathnav select { max-width: 100%; }
@@ -284,10 +256,8 @@ pre.license { font-size: 12px; background: var(--bg); border: 1px solid var(--li
 .pathsum.ng { color: var(--sub); }
 .steptbl tr.end td { font-weight: 700; font-style: normal; border-top: 2px solid var(--line2); }
 .steptbl tr.end.ok td { color: var(--acc); }
-/* 全手順：表は中身の幅に合わせ、ドロー札の列は折り返す（1.3.0） */
 .steptbl { width: auto; min-width: 60%; }
 .steptbl td.drawn { white-space: normal; min-width: 8em; max-width: 18em; }
-/* 1.4.0：計算のボタンは答えの欄の一番上。目立つボタンは1つ（答えがあるときの「計算し直す」は枠だけ）。空の置き場は小さく */
 .computebox { margin-bottom: 12px; }
 .computebox .vlist { margin: 0 0 10px; }
 .computebox p.ok.compact { margin: 0 0 10px; font-size: 13px; }
@@ -300,8 +270,6 @@ button.sec:hover:not(:disabled) { background: var(--acc2); }
 .zone.empty .zc { min-height: 40px; display: flex; align-items: center; justify-content: center; }
 .zone.empty .drop { padding: 4px; }
 .subtabs button.menu { color: var(--ink); font-weight: 600; border: 1px solid var(--line2); }
-/* 1.6.0：空の置き場は1行の小さな受け口に */
-/* 1.16.3：空の置き場を大きくした（ドラッグで入れられると気づきにくかった、利用者の要望） */
 .emptyzones { margin: 2px 0 10px; }
 .emptyzones > .sl { display: block; margin-bottom: 4px; }
 .ezgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
@@ -309,22 +277,17 @@ button.sec:hover:not(:disabled) { background: var(--acc2); }
 .zone.mini .cnt { color: var(--faint); font-size: 13px; }
 .zone.mini .dz { color: var(--faint); font-size: 12px; }
 .pilerow.one { grid-template-columns: 1fr; }
-/* 入力の欄の横の「？」 */
 .qtip { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 4px; border-radius: 50%; border: 1px solid var(--line2); color: var(--sub); font-size: 11px; font-weight: 700; cursor: help; vertical-align: 1px; }
 .qtip:hover, .qtip:focus { background: var(--acc2); color: var(--acc); border-color: var(--acc); outline: none; }
-/* この局面で取れる点 */
-/* もう一方の答え（達成率最大 ⇔ 95%で良ければ） */
 .altans { margin: 10px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 .altans .altline { flex: 1 1 260px; }
 .altans .altnext { color: var(--sub); }
-/* 答えの見出しの小さな印（即答・前の計算を使用 など） */
 .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
 .tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--infobg); color: var(--info); cursor: help; }
 .lastexam { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 28px; margin: 2px 0 8px; }
 .lastexam .opt { display: flex; flex-direction: column; gap: 4px; }
 .lastexam .optrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .lastexam .both { margin-left: 24px; font-size: 14px; }
-
 dialog.restore { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; width: min(720px, 92vw); background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
 dialog.restore::backdrop { background: rgba(0,0,0,.35); }
 dialog.restore h3 { margin: 0 0 6px; }
@@ -343,14 +306,12 @@ ol.howto li:first-child { color: var(--ink); font-weight: 700; }
 .preview .pc { display: inline-flex; align-items: center; gap: 4px; }
 .preview .hint { width: 100%; margin: 0; }
 .pcbadge { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--okbg); color: var(--ok); border: 1px solid var(--ok); }
-
 .tgtwrap { display: flex; flex-direction: column; gap: 4px; }
 .tgtbtns { display: flex; gap: 6px; }
 .tgtbtns button.on { background: var(--acc2); border-color: var(--acc); font-weight: 700; }
 .cmnote { color: var(--faint); font-size: 12px; margin-top: 18px; }
 .lostline { background: var(--errbg); border-radius: 8px; padding: 6px 10px; font-size: 13px; margin: 6px 0; }
 .lostline small.unsup { margin-left: 6px; }
-/* 成長の欄：名前を入力の箱のすぐ上に置き、欄どうしの間を空ける（1.17.3、利用者の指摘：名前と箱が離れて、隣の欄の名前に見えた） */
 .bulk .row { align-items: flex-end; gap: 18px; }
 .bulk label.f { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; margin: 0; }
 .bulk label.f .fl { font-size: 12px; color: var(--sub); }

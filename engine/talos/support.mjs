@@ -1,13 +1,10 @@
-// Talos・Tecnai が対応している DSL の一覧と、札・ドリンク・P アイテムの「対応していない効果」を調べる関数（読み込む前に、静的に調べる）。
-// エンジン（engine.mjs・tecnai.mjs）の対応の範囲と同じにする（bench/test-settings.mjs で、ここで対応とした札がエンジンで読み込めることを確かめる）。
-// ブラウザでも動く（Node 専用の機能なし）。
 export const IN_TURN=new Set(['beforeCardUsed','cardUsed','activeCardUsed','mentalCardUsed','afterCardUsed','afterActiveCardUsed','afterMentalCardUsed','stanceChanged','stanceValueChanged','endOfTurn','staminaDecreased','fullPowerChargeIncreased']);
 export const LATER=new Set(['turn','startOfTurn','beforeStartOfTurn','afterStartOfTurn','everyTurn','startOfStage','afterStartOfStage','prestage','turnSkipped']);
-export const IGNORED_FIELDS=new Set(['enthusiasmExtensionTurns',   // 2026-11-08：結果としての今（Tecnai と同じ）
+export const IGNORED_FIELDS=new Set(['enthusiasmExtensionTurns',
   'genki','fixedGenki','stamina','fixedStamina','fullPowerCharge','halfCostTurns','doubleCostTurns','costReduction','costIncrease','nullifyCostCards','nullifyCostActiveCards','cost','nullifyGenkiTurns','doubleBuffCostTurns']);
 export const IGNORED_GROWTH=new Set(['g.cost','g.typedCost','g.genki','g.fullPowerCharge','g.halfCostTurns']);
 export const IGNORED_CALLS=new Set(['setFullPowerChargeBuff','setFullPowerEffectBuff','decreaseFullPowerCharge']);
-export const CALLS=new Set(['setStance','drawCard','exchangeHand','addCardToDeck','holdSelected','holdSelectedUpto','holdThisCard',   // 2026-11-08：本領発揮・羽ばたけ！など（Tecnai と同じ）
+export const CALLS=new Set(['setStance','drawCard','exchangeHand','addCardToDeck','holdSelected','holdSelectedUpto','holdThisCard',
   'moveRandomToHand','removeRandom','useRandomCardFree','addRandomUpgradedSSRCardToHand',
   'setScoreBuff','setEnthusiasmBuff','setEnthusiasmBonus','setStrengthEffectBuff',...IGNORED_CALLS]);
 export const ASSIGN=new Set(['score','cardUsesRemaining','enthusiasm','enthusiasmMultiplier','effectCounter','scoreTimes']);
@@ -19,7 +16,6 @@ const FUNCS=new Set(['cardHasEffect','countCards','effectCounter']);
 const TARGET_IDS=new Set(['all','hand','deck','held','removed','discarded','active','mental','trouble','pIdol','T','N','R','SR','SSR','L','this']);
 const TARGET_CALLS=new Set(['baseId','id','effect','ability']);
 
-// 式の中の、対応していない変数・関数
 function exprProblems(e,out,where){
   if(!e)return;
   switch(e.t){case 'num':return;
@@ -37,9 +33,6 @@ function targetProblems(e,out,where){
     case 'bin':if(e.op!=='&'&&e.op!=='|')out.push(where+'：対応していない札の対象の式（'+e.op+'）');else{targetProblems(e.a,out,where);targetProblems(e.b,out,where);}return;
     case 'call':if(!TARGET_CALLS.has(e.name))out.push(where+'：対応していない札の対象「'+e.name+'(…)」');return;}
 }
-// 項目の並び（DSL の構文解析の結果）の、対応していない効果。where：場所の説明
-// 回数の上限を、本体の複数の条件（if:）で共有する書き方（G2 2026-11-05、利用者の決定「見張りだけ」）。gakumas-tools では条件ごとに別の効果（別の回数）になるが、
-// ここでは1つの回数を共有するので数え方が違う。今のデータには1件もない（Pアイテム509・札922・ドリンク28）。入ってきたら黙って違う答えを出さず、エラーで知らせる
 export const sharedLimitIfs=x=>x.kind==='effect'&&x.mods?.limit!=null&&(x.body||[]).filter(b=>b.kind==='effect'&&!b.phase&&b.cond).length>=2;
 export const SHARED_LIMIT_MSG='回数の上限（limit）を複数の条件（if:）で共有する書き方には対応していません（gakumas-tools では条件ごとに別の回数になります）';
 export function itemProblems(items,where,out=[]){
@@ -51,7 +44,7 @@ export function itemProblems(items,where,out=[]){
         else for(const a of x.args)if(a.t!=='id')exprProblems(a,out,where);
         if(x.target)targetProblems(x.target,out,where);
       }else{
-        if(IGNORED_FIELDS.has(x.lhs)||IGNORED_GROWTH.has(x.lhs))continue;   // 省く項目（体力など）は、右辺も読まない
+        if(IGNORED_FIELDS.has(x.lhs)||IGNORED_GROWTH.has(x.lhs))continue;
         if(!(ASSIGN.has(x.lhs)||x.lhs==='g.score'||x.lhs==='g.scoreTimes')){out.push(where+'：対応していない代入「'+x.lhs+x.op+'」');continue;}
         exprProblems(x.rhs,out,where);}
     }else if(x.kind==='effect'){if(sharedLimitIfs(x))out.push(where+'：'+SHARED_LIMIT_MSG);
@@ -68,13 +61,11 @@ export function itemProblems(items,where,out=[]){
   }
   return out;
 }
-// 選ぶ行動（holdSelected など）は、最初の行動でなければならない
 function selectProblems(items,where,out){
   const i=(items||[]).findIndex(x=>x.kind==='action'&&x.op==='call'&&/Selected/.test(x.name));
   if(i>0)out.push(where+'：選ぶ行動（'+items[i].name+'）が最初にない札は対応していない');
   else if(i===0&&items[i].name!=='holdSelected'&&items[i].name!=='holdSelectedUpto')out.push(where+'：対応していない選ぶ行動「'+items[i].name+'」');
 }
-// 札1枚の、対応していない効果（使用条件・効果・継続効果）
 export function cardProblems(card){
   const out=[],w=(card.name||String(card.id))+'（'+(card.key??card.id)+'）';
   for(const c of card.usable||[])exprProblems(c,out,w+'の使用条件');
@@ -87,7 +78,6 @@ export function itemDefProblems(it){const out=[],w=it.name+'（P アイテム '+
   for(const e of it.effects)if(e.kind!=='effect'||!e.phase)out.push(w+'：P アイテムの形が対応していない');
   itemProblems(it.effects,w,out);return out;}
 
-// gakumas-tools の CSV を差し替えたときの点検：対応していない効果を持つ札・ドリンク・P アイテムの一覧（日本語の理由つき）
 export function unsupportedList(data){
   const cards=[],drinks=[],items=[];
   for(const c of data.cards.values()){if(typeof c.key==='string')continue;const p=cardProblems(c);if(p.length)cards.push({id:c.id,name:c.name,problems:p});}
@@ -96,12 +86,6 @@ export function unsupportedList(data){
   return {cards,drinks,items,counts:{cards:data.cards.size,unsupportedCards:cards.length,drinks:data.drinks.size,unsupportedDrinks:drinks.length,items:data.items.size,unsupportedItems:items.length}};
 }
 
-// ---- P アイテムの入力欄（2026-11-04、利用者「デッキで選んだら、対象の P アイテムの入力欄が出るように」） ----
-// pItemInputs(data, {pIdolId} または {ids})：その P アイドルの固有の P アイテム（または指定した番号）について、計算に使えるか（supported・problems）、
-// ソリティアの中で発動しうるか（inSolitaire）、要る入力欄（inputs）を返す。入力欄：
-//   {key:'fired', label:'発動済みの回数', min:0, max:回数の上限, slot}：回数の上限（limit）のある効果ごと。エンジンには残り回数（上限−発動済み）を渡す
-//   {key:'counter', label:'カウンタ', min:0}：効果のカウンタ（effectCounter）を読む・書く P アイテム
-// 1回の発動で熱意倍率を変える効果（setEnthusiasmBuff(数)）は enthusiasmBuffPerUse に出す（発動済みの分は enthusiasmBuff に含めて渡す決まり。DESIGN 22.10）
 const limitSlots=e=>{const out=[];(function walk(n){if(n.kind!=='effect')return;if(n.mods?.limit!=null)out.push({limit:n.mods.limit,node:n});for(const b of n.body||[])if(b.kind==='effect'&&!b.phase)walk(b);})(e);return out;};
 const buffPerUse=node=>{let v=0;(function walk(items){for(const x of items||[]){if(x.kind==='action'&&x.op==='call'&&x.name==='setEnthusiasmBuff'&&x.args[0]?.t==='num'&&x.args.length===1)v+=x.args[0].v;else if(x.kind==='effect'&&!x.phase)walk(x.body);}})(node.body);return v;};
 const usesCounter=items=>JSON.stringify(items).includes('effectCounter');
@@ -116,8 +100,6 @@ export function pItemInputs(data,{pIdolId=null,ids=null}={}){
       note:it.id===307||it.id===308?'試作・未検証：ソリティアの途中は、コストが stamina-= の札でだけ発動（DESIGN 22.10）':null};
   });
 }
-// 入力の値からエンジンの setup の形を作る：pItemSetup(data, id, {fired:[回数…], counter}) → {pItem:{id, limits, counter}, enthusiasmBuffAdd}
-// enthusiasmBuffAdd：発動済みの分の熱意倍率（setup.enthusiasmBuff に足す。例 +版を2回なら 1.2）
 export function pItemSetup(data,id,{fired=[],counter}={}){
   const [info]=pItemInputs(data,{ids:[id]});if(!info)throw Error('未登録の P アイテム: '+id);
   const slots=info.inputs.filter(x=>x.key==='fired');let add=0;

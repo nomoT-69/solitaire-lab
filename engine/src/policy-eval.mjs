@@ -1,5 +1,4 @@
-// Exact rational replay of ANY policy DAG (V6 or reference) against a model.
-import {ZERO,ONE,R,add,mul,str,toNum,cmp} from './rational.mjs?v=1.17.11';
+import {ZERO,ONE,R,add,mul,str,toNum,cmp} from './rational.mjs?v=1.17.12';
 export function evalPolicyExact(model,policy){
   const memo=new Map();
   function walk(s,id){

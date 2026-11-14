@@ -1,12 +1,3 @@
-// gakumas-tools の効果の文字列（DSL、data/gakumas-tools/Effects.md）の構文解析。仕様書から独自に書いたもの。
-// 結果（項目の並び）：
-//   {kind:'effect', anchor?, phase?, filter?, cond?, target?, body:[項目], mods:{limit,ttl,delay,group,line,level}}
-//   {kind:'action', anchor?, op:'call', name, target?, args:[式]}            例：drawCard(2)、moveRandomToHand[deck](1)、exchangeHand
-//   {kind:'action', anchor?, op:'=' | '+=' | '-=' | '*=' | '/=' | '%=', lhs, rhs:式}   例：score+=6、g.score+=14
-//   {kind:'cond', anchor?, cond:式}                                            例：conditions 列の if:preservationTimes>=2（本体なし）
-//   {kind:'mod', name, value}                                                  例：limit:1（直前の効果を囲む効果に付く）
-//   {kind:'level', level, body:[項目]}                                         例：カスタマイズの level:2 { … }（その段階のときだけの効果）
-// 式：{t:'num',v} {t:'id',name} {t:'call',name,args,target?} {t:'un',op,a} {t:'bin',op,a,b}
 const MODS=new Set(['limit','ttl','delay','group','line','level']);
 const isWord=c=>/[A-Za-z0-9_.$]/.test(c);
 
@@ -14,11 +5,8 @@ export function parseSequence(src){
   const s=String(src??'');let i=0;
   const ws=()=>{while(i<s.length&&/[\s;]/.test(s[i]))i++;};
   const err=m=>{throw Error('DSL: '+m+' @'+i+' in '+JSON.stringify(s));};
-  // 対応する括弧までの文字列（[...]、(...) を入れ子で数える）
   function balanced(open,close){if(s[i]!==open)err('expected '+open);let d=0,j=i;for(;j<s.length;j++){if(s[j]===open)d++;else if(s[j]===close){d--;if(!d)break;}}if(d)err('unbalanced '+open);const inner=s.slice(i+1,j);i=j+1;return inner;}
-  // 条件や対象の式：深さ0の '{'、';'、'}' の手前まで（空白を含んでよい）
   function exprText(){let d=0,j=i;for(;j<s.length;j++){const c=s[j];if(c==='('||c==='[')d++;else if(c===')'||c===']')d--;else if(!d&&(c==='{'||c===';'||c==='}'))break;}const t=s.slice(i,j).trim();i=j;return t;}
-  // 行動：深さ0の ';'、'}'、空白の手前まで
   function actionText(){let d=0,j=i;for(;j<s.length;j++){const c=s[j];if(c==='('||c==='[')d++;else if(c===')'||c===']')d--;else if(!d&&(c===';'||c==='}'||/\s/.test(c)))break;}const t=s.slice(i,j);i=j;return t;}
   function block(){ws();if(s[i]!=='{')return null;i++;const items=seq(true);if(s[i]!=='}')err('expected }');i++;return items;}
   function seq(inner){
@@ -26,18 +14,15 @@ export function parseSequence(src){
     for(;;){
       ws();if(i>=s.length){if(inner)err('missing }');return out;}
       if(s[i]==='}'){if(!inner)err('unexpected }');return out;}
-      // カスタマイズの差分：「+ 効果」は追加、「@名前 …」は名前の付いた効果の置き換え
       let append=false;if(s[i]==='+'&&/\s/.test(s[i+1]||'')){append=true;i++;ws();}
       let anchor;if(s[i]==='@'){i++;let j=i;while(j<s.length&&isWord(s[j]))j++;anchor=s.slice(i,j);i=j;ws();}
       let j=i;while(j<s.length&&/[A-Za-z]/.test(s[j]))j++;const word=s.slice(i,j);
-      // do { … }：行動のまとまり
       if(word==='do'){let k=j;while(k<s.length&&/\s/.test(s[k]))k++;if(s[k]==='{'){i=k;const body=block();out.push({kind:'effect',anchor,mods:{},body,...(append?{append}:{})});continue;}}
       const mark=x=>{if(append)x.append=true;return x;};
       if(s[j]===':'&&['at','if','target','do',...MODS].includes(word)){
         i=j+1;
         if(MODS.has(word)){
           let k=i;while(k<s.length&&/[0-9]/.test(s[k]))k++;const value=Number(s.slice(i,k));i=k;
-          // カスタマイズの段階ごとの効果：level:N { … }
           if(word==='level'){const save=i;ws();if(s[i]==='{'){const body=block();out.push({kind:'level',anchor,level:value,body});continue;}i=save;}
           out.push({kind:'mod',name:word,value});continue;}
         if(word==='do'){out.push(parseAction(actionText(),anchor));continue;}
@@ -57,9 +42,8 @@ export function parseSequence(src){
   return out;
 }
 
-// 1つの行動の文字列
 export function parseAction(t,anchor){
-  const m=t.match(/^([A-Za-z_][A-Za-z0-9_.]*(?:\([^()]*\))?)\s*(\+=|-=|\*=|\/=|%=|=)(.*)$/s);   // 左辺は effectCounter(turn) のような形もある
+  const m=t.match(/^([A-Za-z_][A-Za-z0-9_.]*(?:\([^()]*\))?)\s*(\+=|-=|\*=|\/=|%=|=)(.*)$/s);
   if(m&&!/[=!<>]$/.test(m[1]))return {kind:'action',anchor,op:m[2],lhs:m[1],rhs:parseExpr(m[3])};
   const c=t.match(/^([A-Za-z_][A-Za-z0-9_]*)(.*)$/s);if(!c)throw Error('DSL action: '+t);
   let rest=c[2],target,args=[];
@@ -70,7 +54,6 @@ export function parseAction(t,anchor){
 }
 function splitArgs(s){const out=[];let d=0,cur='';for(const c of s){if(c==='('||c==='[')d++;else if(c===')'||c===']')d--;if(c===','&&!d){out.push(cur);cur='';}else cur+=c;}if(cur.trim())out.push(cur);return out;}
 
-// 式（条件・右辺・対象）：| & 比較 + - * / % 単項 ! - 、括弧、数、識別子、関数呼び出し name(...) と name[...]
 export function parseExpr(src){
   const toks=[];const s=String(src);let i=0;
   while(i<s.length){const c=s[i];
@@ -95,7 +78,6 @@ export function parseExpr(src){
   const e=bin(0);if(p!==toks.length)throw Error('DSL expr trailing in '+s);return e;
 }
 
-// 文字列に戻す（往復の試験用。括弧は常に付ける）
 export function exprToString(e){
   switch(e.t){case 'num':return String(e.v);case 'id':return e.name;
     case 'call':return e.name+(e.target?'['+exprToString(e.target)+']':'')+(e.args.length||!e.target?'('+e.args.map(exprToString).join(',')+')':'');

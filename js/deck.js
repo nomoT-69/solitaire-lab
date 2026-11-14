@@ -1,13 +1,10 @@
-// 1. デッキ登録：札・ドリンク・P アイテム・P アイドルを名前（正式名・略称）で探して足す。保存して何度も使う
-import {D, search, hifOk, unsupported, PLAN_NAME, lifeOn, lifeAble} from './data.js?v=1.17.11';
-import {S, save, uid, deck, newDeck} from './store.js?v=1.17.11';
-import {h, pic, cardTile, popover, toast} from './ui.js?v=1.17.11';
-import {variantKey} from './nextturn.js?v=1.17.11';
+import {D, search, hifOk, unsupported, PLAN_NAME, lifeOn, lifeAble} from './data.js?v=1.17.12';
+import {S, save, uid, deck, newDeck} from './store.js?v=1.17.12';
+import {h, pic, cardTile, popover, toast} from './ui.js?v=1.17.12';
+import {variantKey} from './nextturn.js?v=1.17.12';
 
 let tab = 'cards', query = '', plusPref = true, withFree = true, resScroll = 0;
-// 札の絞り込み（複数選べる）。同じ種類の中は「どれか」、種類どうしは「両方」。何も選ばない種類は絞らない
 const RARITIES = ['SSR', 'SR', 'R', 'N'];
-// 入手のしかた（gakumas-tools の sourceType）：support＝サポートカードの札、pIdol＝アイドル固有の札、produce＝プランの札（プロデュース中に手に入る）、default＝基本の札（最初からデッキにある）
 const SOURCES = [['support', 'サポートカードの札'], ['pIdol', 'アイドル固有の札'], ['produce', 'プランの札'], ['default', '基本の札']];
 const filt = {rarity: new Set(), source: new Set()};
 const srcOf = c => c.sourceType === 'default' ? 'default' : c.sourceType === 'support' || c.sourceType === 'pIdol' ? c.sourceType : 'produce';
@@ -48,11 +45,9 @@ export function renderDeck(root, rerender) {
     popover(e.currentTarget, c.name, items);
   };
 
-  // 札は種類ごとにまとめて並べる（同じ札・同じカスタマイズ・同じHIF）
   const center = h('section.panel.deckbody', {},
     h('h2', {}, dk.name, h('small.sub', `　札 ${dk.cards.length} 枚`)),
     h('h3', 'スキルカード'),
-    // 同じ札（同じカスタマイズ・HIF）は1枚にまとめて ×n で出す。押したときの変更は、その中の1枚に当たる
     dk.cards.length ? h('div.grid', groups(dk.cards).map(g => cardTile(g[0], {count: g.length, onclick: e => cardEdit(e, g[0])}))) : h('p.empty', '右で探して足してください。'),
     h('h3', 'P ドリンク（ソリティアで持っていることがあるもの）'),
     h('div.chips', dk.drinks.map(id => chip('drinks', id, D.drinks.find(x => x.id === id)?.name, () => { dk.drinks = dk.drinks.filter(x => x !== id); touch(); rerender(); }))),
@@ -60,24 +55,20 @@ export function renderDeck(root, rerender) {
     h('div.chips', dk.items.map(id => chip('items', id, D.items.find(x => x.id === id)?.name, () => { dk.items = dk.items.filter(x => x !== id); touch(); rerender(); }))),
     h('h3', 'P アイドル'),
     h('div.chips', dk.pidol ? chip('pidols', dk.pidol, D.pidols.find(x => x.id === dk.pidol)?.name, () => { dk.pidol = null; touch(); rerender(); }) : h('span.empty', 'なし')),
-    // デッキの下に薄い灰色で（1.16.9、利用者の指示）
     h('p.note.cmnote', 'cm燕のように全力を絡める場合について：このツールは1ターンだけのソリティアを想定しているため、全力の効果と、ターンをまたぐ効果（ソリティアのターンに発動するものは除く）は計算に入れていません。オバドラループを含めた計算はできません。オバドラを含む1ターンのソリティアは計算できます。'));
 
-  // 検索
   const TABS = [['cards', '札'], ['drinks', 'ドリンク'], ['items', 'P アイテム'], ['pidols', 'P アイドル']];
-  // プランで分ける（デッキごとに覚える。既定はアノマリー）。フリーはどのプランでも使えるので、既定で一緒に出す
   dk.plan ||= 'anomaly';
   const planOk = x => x.custom || x.plan === dk.plan || (tab !== 'pidols' && withFree && x.plan === 'free');
-  // 並べる順：選んだプラン → フリー、その中はレア度の高い順（SSR・SR・R・N）、同じなら番号の順
   const RANK = {SSR: 0, SR: 1, R: 2, N: 3, T: 4};
   const list = (tab === 'cards' ? D.cards.filter(c => !c.upgraded && !c.hidden && cardOk(c)) : D[tab]).filter(planOk)
     .map((x, i) => [x, i]).sort(([a, i], [b, j]) => (a.plan === 'free') - (b.plan === 'free') || (RANK[a.rarity] ?? 5) - (RANK[b.rarity] ?? 5) || i - j).map(([x]) => x);
-  let res = search(list, query, Infinity);   // 全部出す（前は最初の60件だけだった）
+  let res = search(list, query, Infinity);
   const add = (kind, x, plus) => {
     if (kind === 'cards') { const id = plus && x.plusId ? x.plusId : x.id; dk.cards.push({uid: uid(), id, c11n: {}, hif: false}); toast(D.cardById.get(id).name + ' を足しました'); }
     else if (kind === 'pidols') dk.pidol = x.id;
     else if (!dk[kind].includes(x.id)) dk[kind].push(x.id);
-    resScroll = resBox.scrollTop;   // 足したあとも一覧の位置を保つ
+    resScroll = resBox.scrollTop;
     touch(); rerender();
   };
   const countLine = h('div.hint.count-line');
@@ -88,7 +79,6 @@ export function renderDeck(root, rerender) {
       tab !== 'pidols' && h('label.f', {}, h('input', {type: 'checkbox', checked: withFree, onchange: e => { withFree = e.target.checked; rerender(); }}), 'フリーも出す')),
     dk.plan !== 'anomaly' && h('p.note', '計算（ソリティア）が対応しているのはアノマリーの札が中心です。センス・ロジックの札の多くは計算に使えません。'),
     h('div.tabs.small', TABS.map(([k, t]) => h('button', {class: k === tab ? 'on' : '', onclick: () => { tab = k; resScroll = 0; rerender(); }}, t))),
-    // 日本語入力（変換中）を途切れさせないよう、打つたびに画面全体は描き直さず、候補の一覧だけを入れ替える
     h('input.search', {type: 'search', placeholder: '名前・略称で探す（例：エンテイ、ドル宣、緑茶）', value: query,
       oninput: e => { if (e.isComposing) return; query = e.target.value; fill(); },
       oncompositionend: e => { query = e.target.value; fill(); },
@@ -99,9 +89,7 @@ export function renderDeck(root, rerender) {
       (filt.rarity.size || filt.source.size) ? h('button.mini', {onclick: () => { filt.rarity.clear(); filt.source.clear(); resScroll = 0; rerender(); }}, '絞り込みを外す') : null),
     tab === 'cards' && h('label.f', {}, h('input', {type: 'checkbox', checked: plusPref, onchange: e => { plusPref = e.target.checked; rerender(); }}), '行を押したとき・Enter で＋版を足す'),
     countLine, resBox);
-  // 行のどこを押しても足す（札は「＋版を足す」にチェックがあれば＋版）。ボタンは通常／＋を選んで足す
   function row(x) {
-    // ドラッグして左のデッキへ落としても足す（1.17.4、利用者の要望）
     return h('div.res.clickable', {title: 'ここを押すか、左のデッキへドラッグすると足します', draggable: true,
       ondragstart: e => { e.dataTransfer.setData('application/x-sl-add', JSON.stringify({tab, id: x.id})); e.dataTransfer.setData('text/plain', x.name); e.dataTransfer.effectAllowed = 'copy'; },
       onclick: () => tab === 'cards' ? add('cards', x, plusPref) : add(tab, x)},
@@ -123,7 +111,6 @@ export function renderDeck(root, rerender) {
     resBox.replaceChildren(...res.map(row));
   }
   fill();
-  // 左のデッキの欄へのドロップ（右の一覧の行をドラッグ）
   center.addEventListener('dragover', e => { if (!e.dataTransfer.types.includes('application/x-sl-add')) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; center.classList.add('dragover'); });
   center.addEventListener('dragleave', e => { if (!center.contains(e.relatedTarget)) center.classList.remove('dragover'); });
   center.addEventListener('drop', e => { const t = e.dataTransfer.getData('application/x-sl-add'); center.classList.remove('dragover'); if (!t) return; e.preventDefault();
@@ -134,7 +121,6 @@ export function renderDeck(root, rerender) {
   root.append(h('div.cols.deckcols', {}, left, center, right));
 }
 
-// 計算が対応していない効果（あれば理由の最初の1つ）
 function unsup(kind, x) {
   const u = unsupported(S.calcSettings);
   const p = kind === 'cards' ? (u.cardIds.get(x.plusId ?? x.id) || u.cardIds.get(x.id)) : kind === 'drinks' ? u.drinks.find(d => d.id === x.id)?.problems : kind === 'items' ? u.items.find(d => d.id === x.id)?.problems : null;

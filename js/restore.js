@@ -1,11 +1,8 @@
-// 報告から局面を戻す：「報告用の情報をコピー」の文（【Solitaire Lab 報告用】{…}）を貼ると、その局面を新しいデッキと局面として作る。
-// 報告の setup（計算の部品の形、setup.js の buildSetup の出力）を、画面の形（デッキ・局面）に戻す。戻したあと buildSetup で作り直し、
-// 報告の setup と同じになるかを確かめる（違えばその旨を出す）。設定（予算など）は変えない（1.13.0、利用者の指示）
-import {D, LIFE_TIMES} from './data.js?v=1.17.11';
-import {S, save, uid, newDeck, newPhase} from './store.js?v=1.17.11';
-import {buildSetup} from './setup.js?v=1.17.11';
-import {itemsFor} from './run.js?v=1.17.11';
-import {h, toast} from './ui.js?v=1.17.11';
+import {D, LIFE_TIMES} from './data.js?v=1.17.12';
+import {S, save, uid, newDeck, newPhase} from './store.js?v=1.17.12';
+import {buildSetup} from './setup.js?v=1.17.12';
+import {itemsFor} from './run.js?v=1.17.12';
+import {h, toast} from './ui.js?v=1.17.12';
 
 export function parseReport(text) {
   const i = text.indexOf('{');
@@ -16,8 +13,8 @@ export function parseReport(text) {
   return o;
 }
 
-// 報告 → {deck, phase}
 export function phaseFromReport(o) {
+  if (!D.cards.length) throw Error('札のデータを読み込み中です。少し待ってからもう一度どうぞ');
   const st = o.setup, cards = new Map(D.cards.map(c => [c.id, c]));
   const missing = [];
   const dk = newDeck('報告から ' + new Date().toLocaleString('ja-JP', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'}));
@@ -28,14 +25,12 @@ export function phaseFromReport(o) {
     const en = {uid: uid(), id: x.id, c11n: {...(x.c11n || {})}, hif: !!x.hif};
     dk.cards.push(en);
     if (zone !== 'deck') P.zones[en.uid] = zone;
-    // 自己成長：grown 'full' は既定（MAX）。limits があれば、上限 − 残り回数 が育った回数。g は育った分を引いた残りを、これまでに上がった分として入れる
     const c = cards.get(x.id), a = {};
     let gs = x.g?.score || 0, gt = x.g?.scoreTimes || 0;
     if (c?.growth && x.grown !== 'full' && Array.isArray(x.limits)) {
       const lim = c.growth.limit || 1, n = Math.max(0, lim - x.limits[0]);
       a.grown = n; gs -= n * (c.growth.score || 0); gt -= n * (c.growth.times || 0);
     }
-    // 手を伸ばした先に：わたしの人生を込めての回数+2 は札の印（既定で入る）なので、回数+から引く。2 未満なら人生なしとする（1.17.2）
     if (c?.baseId === 849) { if (gt >= LIFE_TIMES) gt -= LIFE_TIMES; else en.life = false; }
     if (gs) a.score = gs; if (gt) a.times = gt;
     if (Object.keys(a).length) P.assume[en.uid] = a;
@@ -65,14 +60,12 @@ export function phaseFromReport(o) {
   return {dk, P, missing};
 }
 
-// 戻した局面から setup を作り直して、報告と同じか
 export function sameAsReport(o, dk, P) {
   try { const {setup, target} = buildSetup({deck: dk, phase: P, cards: new Map(D.cards.map(c => [c.id, c])), items: itemsFor(dk)}); return JSON.stringify(norm(setup)) === JSON.stringify(norm(o.setup)) && target === o.target; }
   catch { return false; }
 }
 const norm = s => JSON.parse(JSON.stringify(s), (k, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a < b ? -1 : 1)) : v);
 
-// 貼り付けの画面
 export function openRestore(go) {
   const ta = h('textarea.restoreta', {rows: 8, placeholder: '【Solitaire Lab 報告用】{…} を貼り付けてください'});
   const msg = h('p.hint', '「答えがおかしい？ 報告用の情報をコピー」で送られた文を貼ると、その局面を新しいデッキと局面として作ります。今のデッキ・局面は残ります（局面は「前の局面」に入ります）。設定は変えません。');
@@ -96,9 +89,6 @@ export function openRestore(go) {
   document.body.append(dlg); dlg.showModal(); ta.focus();
 }
 
-// PC の道具（tools/solve-report.mjs）が保存した答えのファイル（報告.txt.answer.json）を読み込む。
-// 局面を報告から戻し（新しいデッキと局面）、答えをそのまま入れる。プレイの案内・全手順は、ふつうに計算したときと同じに使える。
-// 答えの木の「ほかの引き」の印（cut）の先は取り寄せられない（PC で計算したので）→「ここから局面を作る」で計算し直す
 export function importAnswer(go) {
   const inp = h('input', {type: 'file', accept: '.json,application/json'});
   inp.onchange = async () => {

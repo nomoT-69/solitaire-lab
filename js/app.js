@@ -1,21 +1,19 @@
-// Solitaire Lab（内部の名前 Pallas）の入口：データを読み、タブで画面を切り替える
-import {openRestore, importAnswer} from './restore.js?v=1.17.11';
-import {loadAll, D, syncCustomCards, CONTACT} from './data.js?v=1.17.11';
-import {S, save, deck, restoreTrees} from './store.js?v=1.17.11';
-import {h, closePop, popover} from './ui.js?v=1.17.11';
-import {copyReport} from './report.js?v=1.17.11';
-import {renderDeck} from './deck.js?v=1.17.11';
-import {renderTurn} from './turn.js?v=1.17.11';
-import {renderSettings} from './settings.js?v=1.17.11';
-import {renderCredits} from './credits.js?v=1.17.11';
-import {renderCardSettings} from './cardsettings.js?v=1.17.11';
-import {setRerender} from './run.js?v=1.17.11';
+import {openRestore, importAnswer} from './restore.js?v=1.17.12';
+import {loadAll, D, syncCustomCards, CONTACT} from './data.js?v=1.17.12';
+import {S, save, deck, restoreTrees} from './store.js?v=1.17.12';
+import {h, closePop, popover} from './ui.js?v=1.17.12';
+import {copyReport} from './report.js?v=1.17.12';
+import {renderDeck} from './deck.js?v=1.17.12';
+import {renderTurn} from './turn.js?v=1.17.12';
+import {renderSettings} from './settings.js?v=1.17.12';
+import {renderCredits} from './credits.js?v=1.17.12';
+import {renderCardSettings} from './cardsettings.js?v=1.17.12';
+import {setRerender} from './run.js?v=1.17.12';
 
-// 主な画面（毎ターン使うソリティア、ときどき使うデッキ）と、たまに使う画面（右に小さく）
 const MAIN = [['turn', 'ソリティア', renderTurn], ['deck', 'デッキ', renderDeck]];
 const SUB = [['cards', '札の設定', renderCardSettings], ['settings', '設定', renderSettings], ['credits', 'クレジット', renderCredits]];
 const TABS = [...MAIN, ...SUB];
-const OLD = {phase: 'turn', result: 'turn', play: 'turn'};   // 前の画面の名前
+const OLD = {phase: 'turn', result: 'turn', play: 'turn'};
 const app = document.getElementById('app');
 
 function render() {
@@ -30,10 +28,8 @@ function render() {
     h('header', {}, h('div.brand', {title: '計算のしくみ：Aegis（Tecnai＋Javelin＋Tomahawk）'}, 'Solitaire Lab'),
       globalThis.PC_MODE && h('span.pcbadge', {title: `計算はこの PC の Node で行います（メモリ ${globalThis.PC_MODE.mem}MiB・層の上限 ${globalThis.PC_MODE.caps.join(',')}）`}, 'PC で計算'),
       h('nav.tabs', {}, MAIN.map(([k, t]) => h('button', {class: k === tab[0] ? 'on' : '', onclick: () => go(k)}, t))),
-      // デッキの切り替え（どの画面からでも）
       S.decks.length ? h('select.deckpick', {title: 'デッキを切り替える', onchange: e => { S.deckId = e.target.value; save(); render(); }},
         S.decks.map(d => h('option', {value: d.id, selected: d.id === S.deckId}, 'デッキ：' + d.name))) : h('span.cur', 'デッキ未選択'),
-      // たまに使うものは、右の2つのメニューにまとめる（ヘルプ：概要・使い方・報告、設定：札の設定・設定・クレジット）
       h('nav.subtabs', {},
         h('button.menu', {onclick: e => popover(e.currentTarget, '', [
           {label: '概要（はじめての方へ）', onclick: () => window.open('manual/summary.html', '_blank', 'noopener')},
@@ -52,7 +48,6 @@ function render() {
 }
 
 setRerender(render);
-// PC モード（serve.mjs --pc）：自分の PC のサーバーで開いたときだけ、計算を PC の Node で行う（1.16.0）
 if (['localhost', '127.0.0.1'].includes(location.hostname)) { try { const r = await fetch('/__pc/ping'); if (r.ok) globalThis.PC_MODE = await r.json(); } catch {} }
 try { await loadAll(); syncCustomCards(S.calcSettings); await restoreTrees(); render(); }
 catch (e) { app.replaceChildren(h('div.panel', {}, h('h2', '読み込めませんでした'), h('pre', String(e.stack || e)),

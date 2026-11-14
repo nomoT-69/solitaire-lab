@@ -1,7 +1,5 @@
-// 画面の側から計算を動かす（Web Worker の起動・中止・知らせの受け取り）。計算中も画面は固まらない。
-import {D} from './data.js?v=1.17.11';
+import {D} from './data.js?v=1.17.12';
 
-// PC モード（serve.mjs --pc）：計算のスレッドを、この PC の Node のスレッドにする（Web Worker と同じ使い方。1.16.0）
 class PcWorker {
   constructor() {
     this.chain = fetch(PC_BASE() + '__pc/new', {method: 'POST'}).then(r => r.json()).then(({id}) => {
@@ -15,15 +13,11 @@ class PcWorker {
   terminate() { if (this.dead) return; this.dead = true; this.chain.then(() => { this.es?.close(); if (this.id) fetch(PC_BASE() + '__pc/kill?id=' + this.id, {method: 'POST'}); }); }
 }
 const PC_BASE = () => '/';
-const mkWorker = () => globalThis.PC_MODE ? new PcWorker() : new Worker(new URL('./worker.js?v=1.17.11', import.meta.url), {type: 'module'});
+const mkWorker = () => globalThis.PC_MODE ? new PcWorker() : new Worker(new URL('./worker.js?v=1.17.12', import.meta.url), {type: 'module'});
 
 let worker = null, seq = 0, H = null, resumable = false, followable = false, partial = false, expandCb = new Map(), expandSeq = 0;
-// handlers：{progress, update, result, table, error}。それぞれ worker からの知らせ（worker.js の先頭の説明）を受け取る
-// 答えが「続きから計算できる」（resumable）ときは、スレッドを止めずに残す（resumeSolve で続ける）
-// 答えが最適で、続きの局面を即答できる（canFollow）ときも、スレッドを残す。次の計算はそのスレッドで行い、follow:{path} があれば続きの局面の即答を、
-// なければ同じ局面で目標・基準を変えた答えの使い回し（retarget）を試す。どちらも使えなければ、前の計算を捨てて計算し直す（worker.js）
 export function startSolve({setup, target, opts, calcSettings, follow = null}, handlers) {
-  const reuse = !!worker && followable;   // （答えの木の続きを持っているだけのスレッドは使い回さない）
+  const reuse = !!worker && followable;
   if (!reuse) cancelSolve();
   const id = ++seq; H = handlers; resumable = false; followable = false; partial = false;
   if (!reuse) worker = mkWorker();
@@ -38,7 +32,6 @@ export function startSolve({setup, target, opts, calcSettings, follow = null}, h
   worker.postMessage({type: 'solve', id, csv: D.csv, calcSettings, setup, target, opts, follow: reuse ? follow : null, reuse});
   return id;
 }
-// 続きから計算する（前の計算を持ったスレッドがあるときだけ）。maxMs：足す時間
 export function canResume() { return !!worker && resumable; }
 export function resumeSolve(maxMs, handlers) {
   if (!canResume()) return false;
@@ -46,9 +39,7 @@ export function resumeSolve(maxMs, handlers) {
   worker.postMessage({type: 'resume', id: seq, maxMs});
   return true;
 }
-// 中止：スレッドごと止める（計算の途中でも、すぐ止まる）。続きからの計算もできなくなる
 export function cancelSolve() { worker?.terminate(); worker = null; resumable = false; followable = false; partial = false; for (const cb of expandCb.values()) cb({error: '中止しました'}); expandCb.clear(); }
-// 答えの木の「ほかの引き」の印（cut）の先を取り寄せる（答えを出したスレッドが残っている間だけ）。cb({tree}|{error})
 export const canExpand = () => !!worker && (partial || resumable || followable);
 export function expandSolve(key, path, cb) {
   if (!canExpand()) return false;
@@ -58,7 +49,6 @@ export function expandSolve(key, path, cb) {
 }
 export const isRunning = () => !!worker;
 
-// 足した札の点検（Talos と Tecnai の照合）。計算とは別のスレッドで動かす
 let inspector = null;
 export function startInspect({ids, calcSettings, opts}, {done, error}) {
   inspector?.terminate();
@@ -70,7 +60,6 @@ export function startInspect({ids, calcSettings, opts}, {done, error}) {
 }
 export function cancelInspect() { inspector?.terminate(); inspector = null; }
 
-// 次のターンの局面：プレイでたどった道筋の最後の局面の中身をもらう
 export function turnEnd({setup, target, calcSettings, path}, {done, error}) {
   const w = mkWorker();
   w.onmessage = e => { if (e.data.type === 'turnEnd') done(e.data.state); else if (e.data.type === 'error') error(e.data.message); w.terminate(); };

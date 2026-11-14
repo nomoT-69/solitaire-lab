@@ -1,9 +1,8 @@
-// 報告用の情報：テストする人が「おかしい」と思ったときに、版・設定・局面・答えを1つの文字列にしてコピーする（個人情報は入らない）。
-import {D, CONTACT} from './data.js?v=1.17.11';
-import {S, deck} from './store.js?v=1.17.11';
-import {buildSetup} from './setup.js?v=1.17.11';
-import {itemsFor} from './run.js?v=1.17.11';
-import {h} from './ui.js?v=1.17.11';
+import {D, CONTACT} from './data.js?v=1.17.12';
+import {S, deck} from './store.js?v=1.17.12';
+import {buildSetup} from './setup.js?v=1.17.12';
+import {itemsFor} from './run.js?v=1.17.12';
+import {h} from './ui.js?v=1.17.12';
 
 export function reportText(note = '') {
   const dk = deck();
@@ -13,12 +12,11 @@ export function reportText(note = '') {
   const o = {
     aegis: {gui: D.version.gui, engine: D.version.engine.commit, data: D.version.data.commit, images: !!D.images, browser: navigator.userAgent},
     note, settings: S.settings, calcSettings: S.calcSettings, setup, target,
-    mode: {saveDrinks: !!S.phase?.params?.saveDrinks, beyondGoal: !!S.phase?.params?.beyondGoal},   // 局面のチェック（報告から局面を戻すときに使う）
+    mode: {saveDrinks: !!S.phase?.params?.saveDrinks, beyondGoal: !!S.phase?.params?.beyondGoal},
     result: R && {kind: R.kind, optimalityProven: R.optimalityProven, best: R.best && {p: R.best.p, d: R.best.d, a: R.best.a}, next: R.next, solver: R.solver, trials: R.trials, ms: R.ms, budgetSec: R.budgetSec, steps: S.play?.steps?.map(s => s.label)},
   };
   return '【Solitaire Lab 報告用】\n' + JSON.stringify(o);
 }
-// コピーしたあとに、送り先（X の紹介の投稿へのリプライ）を押して開ける案内を出す（1.17.9、利用者の要望。DM は「必要なら」の扱い）
 function sendGuide(copied) {
   const go = url => window.open(url, '_blank', 'noopener');
   const dlg = h('dialog.restore', {},

@@ -1,13 +1,9 @@
-// 札の設定：HIF などのアビリティの効果、自作の札、データの上書き、データの更新（新しい CSV）、足した札の点検。
-// 中身はエンジンの settings.mjs の形（{version, abilities, overrides, customCards}）。入力のたびにエンジンの validateSettings で確かめる。
-// 保存はこのブラウザの中だけ（S.calcSettings）。ファイルへの書き出し・読み込みもできる。
-import {D, search, calcDefaults, checkCalcSettings, unsupported, syncCustomCards, CSV_FILES, loadUserCsv, saveUserCsv} from './data.js?v=1.17.11';
-import {S, save} from './store.js?v=1.17.11';
-import {h, toast} from './ui.js?v=1.17.11';
-import {loadData} from '../engine/talos/data.mjs?v=1.17.11';
-import {startInspect, cancelInspect} from './solver.js?v=1.17.11';
+import {D, search, calcDefaults, checkCalcSettings, unsupported, syncCustomCards, CSV_FILES, loadUserCsv, saveUserCsv} from './data.js?v=1.17.12';
+import {S, save} from './store.js?v=1.17.12';
+import {h, toast} from './ui.js?v=1.17.12';
+import {loadData} from '../engine/talos/data.mjs?v=1.17.12';
+import {startInspect, cancelInspect} from './solver.js?v=1.17.12';
 
-// よく使う効果の形（押すと効果の文字列に足す。{N} は数を聞く）
 const SNIPPETS = [['行動＋1', 'cardUsesRemaining+=1'], ['1枚ドロー', 'drawCard'], ['スコア＋N', 'score+={N}'], ['熱意＋N', 'enthusiasm+={N}'],
   ['強気にする', 'setStance(strength)'], ['温存にする', 'setStance(preservation)'], ['のんびりにする', 'setStance(leisure)']];
 const TYPES = [['active', 'アクティブ'], ['mental', 'メンタル']];
@@ -21,7 +17,6 @@ export function renderCardSettings(root, rerender) {
   CS.abilities ||= {}; CS.overrides ||= []; CS.customCards ||= [];
   const commit = structural => { S.calcSettings = CS; syncCustomCards(CS); save(); if (structural) rerender(); else showProblems(); };
 
-  // 確かめた結果（入力のたびに更新）
   const probBox = h('div#cs-problems');
   function showProblems() {
     let r; try { r = checkCalcSettings(CS); } catch (e) { r = {ok: false, problems: [{level: 'エラー', where: '設定', message: String(e.message || e)}]}; }
@@ -32,7 +27,6 @@ export function renderCardSettings(root, rerender) {
   }
   showProblems();
 
-  // 効果の文字列の入力（よく使う形のボタンつき）
   const effectInput = (obj, key, {placeholder = '', onblur} = {}) => {
     const ta = h('textarea.dsl', {rows: 2, spellcheck: false, placeholder, value: obj[key] || '',
       oninput: e => { obj[key] = e.target.value; commit(false); }, onchange: () => onblur?.()});
@@ -41,7 +35,6 @@ export function renderCardSettings(root, rerender) {
       obj[key] = obj[key] && obj[key].trim() ? obj[key].replace(/;?\s*$/, '; ') + c : c; ta.value = obj[key]; commit(false); onblur?.();
     }}, label))));
   };
-  // 札を選ぶ（検索）。filter で候補を絞る
   const picker = (onPick, {filter = c => !c.upgraded && !c.custom, placeholder = '札を名前・略称で探して足す'} = {}) => {
     const res = h('div.pickres');
     const inp = h('input', {type: 'search', placeholder, oninput: e => fill(e.target.value)});
@@ -50,8 +43,7 @@ export function renderCardSettings(root, rerender) {
   };
   const cardChip = (id, onremove) => h('span.chip', {}, D.cardById.get(id)?.name || `札 ${id}`, h('button.x', {title: '外す', onclick: onremove}, '×'));
 
-  // ---- アビリティ（HIF など）----
-  const mergeSame = name => {   // 同じ効果の組を1つにまとめる
+  const mergeSame = name => {
     const gs = CS.abilities[name]; const out = [];
     for (const g of gs) { const t = out.find(x => normA(x.actions) && normA(x.actions) === normA(g.actions)); if (t) { for (const c of g.cards) if (!t.cards.includes(c)) t.cards.push(c); } else out.push(g); }
     if (out.length !== gs.length) { CS.abilities[name] = out; toast('同じ効果の組をまとめました'); commit(true); }
@@ -65,7 +57,7 @@ export function renderCardSettings(root, rerender) {
         h('div.row', {}, h('b', `組 ${gi + 1}`), h('button.mini.danger', {onclick: () => { groups.splice(gi, 1); commit(true); }}, 'この組を消す')),
         h('div.chips', g.cards.map(id => cardChip(id, () => { g.cards = g.cards.filter(x => x !== id); commit(true); }))),
         picker(c => {
-          for (const o of groups) if (o !== g) o.cards = o.cards.filter(x => x !== c.id);   // 別の組にあれば移す
+          for (const o of groups) if (o !== g) o.cards = o.cards.filter(x => x !== c.id);
           if (!g.cards.includes(c.id)) g.cards.push(c.id); commit(true);
         }),
         h('div.fl2', '効果'), effectInput(g, 'actions', {placeholder: '例：cardUsesRemaining+=1; drawCard', onblur: () => mergeSame(name)}),
@@ -74,7 +66,6 @@ export function renderCardSettings(root, rerender) {
       h('button', {onclick: () => { groups.push({cards: [], actions: ''}); commit(true); }}, '＋ 組を足す'))),
     h('button', {onclick: () => { const n = prompt('アビリティの名前（例：HIF2）'); if (!n) return; if (CS.abilities[n]) return alert('同じ名前があります'); CS.abilities[n] = []; commit(true); }}, '＋ アビリティを足す'));
 
-  // ---- 自作の札 ----
   const customBox = h('section.panel', {},
     h('h2', '自作の札'),
     h('p.note', '名前・種別・効果・レッスン中1回かを入れると、デッキの検索（「自作」でも探せます）と局面で使えます。番号は自動で負の数になります。'),
@@ -89,7 +80,6 @@ export function renderCardSettings(root, rerender) {
       h('label.f', {}, h('span.fl', '使用条件（任意）'), h('input.wide', {value: c.usable || '', placeholder: '例：if:isStrength', oninput: e => { c.usable = e.target.value; commit(false); }})))),
     h('button', {onclick: () => { const id = Math.min(0, ...CS.customCards.map(c => c.id)) - 1; CS.customCards.push({id, name: '自作の札' + -id, type: 'mental', once: false, actions: '', usable: ''}); commit(true); }}, '＋ 自作の札を足す'));
 
-  // ---- データの上書き ----
   const ovBox = h('section.panel', {},
     h('h2', 'データの上書き'),
     h('p.note', 'gakumas-tools のデータと実際のゲームが違う札を、ここで直します。札を選び、直す項目と理由を入れます。'),
@@ -109,8 +99,6 @@ export function renderCardSettings(root, rerender) {
     }),
     h('button', {onclick: () => { CS.overrides.push({ids: [], name: '', set: {}, reason: ''}); commit(true); }}, '＋ 上書きを足す'));
 
-  // ---- 足した札の点検 ----
-  // 点検する札：自作の札、上書きした札、アビリティ（HIF など）を付けた札（エンジンの inspectCards は {id, abilities:[名前]} の指定も受ける）
   const ids = [...new Set([...CS.customCards.map(c => c.id), ...CS.overrides.flatMap(o => o.ids)])];
   for (const [name, groups] of Object.entries(CS.abilities)) for (const g of groups) for (const id of g.cards) ids.push({id, abilities: [name]});
   const idName = x => typeof x === 'number' ? (D.cardById.get(x)?.name || x) : `${D.cardById.get(x.id)?.name || x.id}＋${x.abilities.join('・')}`;
@@ -135,7 +123,6 @@ export function renderCardSettings(root, rerender) {
       ir.loadErrors?.length ? h('details', {}, h('summary', `読み込めなかった局面 ${ir.loadErrors.length} 件`), h('pre', ir.loadErrors.join('\n'))) : null,
       ir.examples?.length ? h('details', {}, h('summary', '不一致の例'), h('pre', JSON.stringify(ir.examples, null, 1).slice(0, 4000))) : null)));
 
-  // ---- データの更新 ----
   const un = unsupported(CS);
   const dataBox = h('section.panel', {},
     h('h2', 'データの更新（gakumas-tools の CSV）'),
@@ -165,7 +152,6 @@ export function renderCardSettings(root, rerender) {
     alert('読み込みました。ページを読み込み直します。'); location.reload();
   }
 
-  // ---- 書き出し・読み込み・既定・JSON ----
   const ioBox = h('section.panel', {},
     h('h2', '札の設定の保存'),
     h('p.note', S.calcSettings ? 'あなたが変えた設定を使っています（このブラウザに保存）。' : '既定の設定を使っています。'),

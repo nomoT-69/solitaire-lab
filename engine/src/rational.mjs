@@ -1,4 +1,3 @@
-// Exact non-negative rationals as normalized {n,d} BigInt pairs.
 const gcd=(a,b)=>{a=a<0n?-a:a;b=b<0n?-b:b;while(b){[a,b]=[b,a%b];}return a;};
 export const R=(n,d=1n)=>{n=BigInt(n);d=BigInt(d);if(d===0n)throw Error('R_ZERO_DEN');if(d<0n){n=-n;d=-d;}const g=gcd(n,d)||1n;return {n:n/g,d:d/g};};
 export const ZERO=R(0),ONE=R(1);
@@ -10,10 +9,7 @@ export const eq=(x,y)=>x.n===y.n&&x.d===y.d;
 export const toNum=x=>Number(x.n)/Number(x.d);
 export const str=x=>x.d===1n?String(x.n):x.n+'/'+x.d;
 export const parse=s=>{const [n,d='1']=String(s).split('/');return R(BigInt(n),BigInt(d));};
-// Recover the exact rational a float probability came from. Accept only when the
-// rational converts back to the identical float and has a bounded denominator.
 export const recovery={exact:0,nearest:0};
-// 同じ浮動小数は同じ分数になるので、変換結果を覚える（件数の記録は初回の変換だけを数える）。
 const fromFloatCache=new Map();
 export function fromFloat(p,maxDen=10n**9n){
   const hit=fromFloatCache.get(p);if(hit)return hit;
@@ -27,9 +23,6 @@ function fromFloatUncached(p,maxDen){
     const a=BigInt(Math.floor(x));const h2=a*h1+h0,k2=a*k1+k0;
     if(k2>maxDen)break;h0=h1;h1=h2;k0=k1;k1=k2;
     if(Number(h1)/Number(k1)===p){recovery.exact++;return R(h1,k1);}
-    // Engine floats may carry a few ulps of rounding from products of fractions.
-    // Accept the first convergent within 8 ulps with a small denominator; callers
-    // must still verify that a whole branch family sums to exactly 1.
     if(k1<=10n**7n&&Math.abs(Number(h1)/Number(k1)-p)<=8*Number.EPSILON*p){recovery.nearest++;return R(h1,k1);}
     const f=x-Math.floor(x);if(f===0)break;x=1/f;
   }

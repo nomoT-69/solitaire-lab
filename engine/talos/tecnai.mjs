@@ -1,20 +1,6 @@
-// Tecnai：Talos（engine.mjs）と同じ意味を、速く・少ないメモリで計算するゼロベースのエンジン（名前は利用者の命名 2026-11-03）。設計は DESIGN.md の 10章。
-// 意味（ルール #1〜#7、gakumas-tools の DSL、処理の順）は engine.mjs と同じ。engine.mjs は照合の相手として残す
-// （bench/tecnai-diff.mjs で全状態を照合する）。
-//
-// engine.mjs との違い（作り方だけ。結果の確率・得点・合法手は同じ）
-//  1. 状態は決まった形のクラス（St）。遷移の中では、枝が分かれるときだけ複製し、ほかはその場で書き換える（コピーを減らす）。
-//  2. 山札は「信念」の表に番号で覚える（同じ山札の分布は1つの番号）。引く・眠気を入れるの結果は、信念ごとに一度だけ計算して覚える。
-//  3. 山札の候補は「区間」の並び：候補＝{重み, 袋, 区間[{s:★の数, f:決まった札}]}。区間の中は一様に並ぶ。★は袋から一様に割り当てる。
-//     位置の並び（engine.mjs の mask）は、長さ1の区間の並びにあたる。眠気を n 枚の山札に入れる（#2：一番下には入らない）と、
-//     mask では n 通りの候補になるが、区間では「上 n 枚に眠気を混ぜた区間＋一番下の1枚」の1通りになる（交換可能性）。
-//  4. 効果の記録の並び（P アイテム・登録された効果・札の effects 列）も表に番号で覚える。キーは短い（番号の文字）。
-//  5. DSL の式は、読み込み時に関数へ変換する。札の対象の判定は、札の種類ごとに覚える。
-//  6. 読まれない数（直前の指針、指針の回数、札の使用回数など）は、その局面で読む札・効果がなければキーに入れない（状態が減る）。
-//     局面に出うる札（初期の札、山札に入る札、青汁の候補）の DSL を読み込み時に調べて決める。
-import {cardVariant,sharedAbilityItem,LATE_CARD_USED_EFFECTS} from './data.mjs?v=1.17.11';
-const LATE_IDS=new Set(LATE_CARD_USED_EFFECTS.flatMap(x=>x.ids));   // 実ゲームで確かめた発動の順の違い（data.mjs の台帳）
-import {CM,COST_FIELDS,staminaLoss,applyCostField} from './engine.mjs?v=1.17.11';   // 体力消費の補正（Talos と同じ計算）
+import {cardVariant,sharedAbilityItem,LATE_CARD_USED_EFFECTS} from './data.mjs?v=1.17.12';
+const LATE_IDS=new Set(LATE_CARD_USED_EFFECTS.flatMap(x=>x.ids));
+import {CM,COST_FIELDS,staminaLoss,applyCostField} from './engine.mjs?v=1.17.12';
 const gcd=(a,b)=>{while(b){const t=a%b;a=b;b=t;}return a;};
 function q(n,d){if(!Number.isSafeInteger(n)||!Number.isSafeInteger(d)||d<=0)throw Error('TALOS_RATIONAL_OVERFLOW');const g=gcd(n,d);return g===1?[n,d]:[n/g,d/g];}
 const qmul=(a,b)=>a[0]===1&&a[1]===1?b:b[0]===1&&b[1]===1?a:q(a[0]*b[0],a[1]*b[1]);
@@ -37,46 +23,32 @@ const isPres=st=>st===K1||st===K2,isStr=st=>st===STR||st===STR2;
 const STANCE_MULT=[0.5,0.25,0,2,2.5];
 const stanceOf=name=>{const i=STANCES.indexOf(name);if(i<0)throw Error('未対応の指針: '+name);return i;};
 const IN_TURN=new Set(['beforeCardUsed','cardUsed','activeCardUsed','mentalCardUsed','afterCardUsed','afterActiveCardUsed','afterMentalCardUsed','stanceChanged','stanceValueChanged','endOfTurn','staminaDecreased','fullPowerChargeIncreased']);
-// 原点へのチケット（P アイテム 307・308、2026-11-04 利用者の決定。試作・未検証）：札のコストが stamina-=（直接の体力消費、正の数）のときだけ、
-// コストの処理（processCost）で体力が減ったとして staminaDecreased を発動する。cost-=（元気から先に減る）は元気で受けるとみなして発動しない
-// 回数の上限（limit）を、条件に当たったときだけ減らす（options.limitOnCond、既定 true。false で前の数え方。2026-11-04）。gakumas-tools の変換では
-// at:X { if:C { … }; limit:N } の if: は同じ効果の条件になり、エンジン（EffectManager）は条件に当たって実行した効果だけ limit を減らす。
-// ここでは本体がすべて条件つきの入れ子（phase なし）のとき、そのどれかの条件に当たったときだけ減らす（直接の行動・入れ子の発動があれば今までどおり）
 const condGate=node=>{const b=node.body||[];return b.length&&b.every(x=>x.kind==='effect'&&!x.phase&&x.cond)?b:null;};
 const directStaminaCost=card=>(card.cost||[]).some(x=>x.kind==='action'&&x.op==='-='&&x.lhs==='stamina'&&x.rhs?.t==='num'&&x.rhs.v>0);
-// コストのある札か（cost-= か stamina-= が正の数）。コストを0にする残り回数は、コストのある札でだけ1回減る（利用者の確認 2026-11-04：コストのない札では減らない）
-// コスト0の残り回数を使う札：コストの行に体力か cost の項目がある札（cost-=0 も含む。gakumas-engine の CardManager.useCard の hasStaminaCost と同じ）。
-// 2026-11-05 に直した：前は正の数だけだった（利用者の 11-04 の確認「減らない」は、実ゲームで確かめ直して「減る」に訂正された）。全力値だけがコストの札は使わない
 const positiveCost=card=>(card.cost||[]).some(x=>x.kind==='action'&&(x.lhs==='stamina'||x.lhs==='cost'));
 const LATER=new Set(['turn','startOfTurn','beforeStartOfTurn','afterStartOfTurn','everyTurn','startOfStage','afterStartOfStage','prestage','turnSkipped']);
-const IGNORED_FIELDS=new Set(['enthusiasmExtensionTurns',   // 熱意の延長ターン（結果としての今のターン終了時。次のターンの話なので省く。2026-11-08、利用者の決定）
+const IGNORED_FIELDS=new Set(['enthusiasmExtensionTurns',
   'genki','fixedGenki','stamina','fixedStamina','fullPowerCharge','halfCostTurns','doubleCostTurns','costReduction','costIncrease','nullifyCostCards','nullifyCostActiveCards','cost','nullifyGenkiTurns','doubleBuffCostTurns']);
 const IGNORED_GROWTH=new Set(['g.cost','g.typedCost','g.genki','g.fullPowerCharge','g.halfCostTurns']);
-// 累計の全力値を入力しないときの暫定値（利用者の決定 2026-11-05：ブースト・ラッシュなどの累計は暫定7で計算し、注意書きを出す）
 export const CFP_PROVISIONAL=7;
 const IGNORED_CALLS=new Set(['setFullPowerChargeBuff','setFullPowerEffectBuff','decreaseFullPowerCharge']);
 const CALLS=new Set(['setStance','drawCard','exchangeHand','addCardToDeck','holdSelected','holdSelectedUpto','holdThisCard','moveRandomToHand','removeRandom','useRandomCardFree','addRandomUpgradedSSRCardToHand',
   'setScoreBuff','setEnthusiasmBuff','setEnthusiasmBonus','setStrengthEffectBuff',...IGNORED_CALLS]);
 const ASSIGN=new Set(['score','cardUsesRemaining','enthusiasm','enthusiasmMultiplier','effectCounter','scoreTimes']);
-// 読むと状態の数が要る変数 → 状態の項目（6.）
 const READ_FIELD={prevStance:'prev',preservationTimes:'pT',strengthTimes:'sT',leisureTimes:'lT',stanceChangedTimes:'pTsT',stanceChangedByDirectEffectTimes:'dirT',cardsUsed:'cardsUsed',turnCardsUsed:'turnUsed'};
 const LOC={hand:0,deck:1,discard:2,removed:3,held:4,used:5,all:6};
 
-// 状態。hand/disc/rem：多重集合の文字列、held：保留（古い順の文字列）、drinks：ドリンク（番号の文字、小さい順）、
-// deck：信念の番号、effs／ce：効果の記録の並びの番号（P アイテムと登録された効果／札の effects 列）
 class St{
   constructor(o){this.hand=o.hand;this.disc=o.disc;this.rem=o.rem;this.held=o.held;this.drinks=o.drinks;this.deck=o.deck;this.effs=o.effs;this.ce=o.ce;
     this.uses=o.uses;this.st=o.st;this.prev=o.prev;this.heat=o.heat;this.extra=o.extra;this.factor=o.factor;this.bonus=o.bonus;this.strB=o.strB;
     this.pT=o.pT;this.sT=o.sT;this.lT=o.lT;this.dirT=o.dirT;this.nc=o.nc??0;this.nco=o.nco??0;this.cm=o.cm??0;this.fp=o.fp??0;this.cfp=o.cfp??0;this.fpb=o.fpb??0;this.cardsUsed=o.cardsUsed;this.turnUsed=o.turnUsed;this.done=o.done;this.em=o.em;this.sTimes=o.sTimes;this.usedTy=o.usedTy;
-    this.score=o.score;this.key=null;this.hits=o.hits;this.hThis=o.hThis??0;}   // hThis：使っている札を保留へ（holdThisCard。札を使い終えるときに消す。キーには入らない）   // hits：表示用の内訳（explain のときだけ使う。ふだんは undefined）
+    this.score=o.score;this.key=null;this.hits=o.hits;this.hThis=o.hThis??0;}
 }
 const clone=s=>new St(s);
 
-// 入力の見張り（2026-11-07、利用者の決定「はい」。DESIGN 22.44：GUI の試しの局面で残り回数が null になっても黙って計算し、誤った答えになった）。
-// 数のはずの欄に数でない値（文字・NaN・Infinity、残り回数の並びの中の null）があれば、場所を書いたエラーにする。欄がない・null は今までどおり既定の値
 export function checkSetupNumbers(setup){
   const bad=(where,v)=>{throw Error('入力の値が数ではありません（'+where+'）：'+(typeof v==='number'?String(v):JSON.stringify(v)));};
-  const num=(where,v)=>{if(v===undefined||v===null)return;   // 欄の null は今までどおり既定の値（残り回数の並びの中の null はエラー）
+  const num=(where,v)=>{if(v===undefined||v===null)return;
 if(typeof v!=='number'||!Number.isFinite(v))bad(where,v);};
   const nonneg=(where,v)=>{num(where,v);if(v!==undefined&&v<0)bad(where,v);};
   const lims=(where,a)=>{if(!Array.isArray(a))bad(where+'.limits',a);a.forEach((v,i)=>{if(typeof v!=='number'||!Number.isInteger(v)||v<0)bad(where+'.limits['+i+']',v);});};
@@ -96,7 +68,6 @@ export function createEngine(data,setup,options={}){
   const cfg={cap:setup.cap??5,trial:setup.trial??1,turnsRemaining:setup.turnsRemaining??1,
     drinkCap:Number.isInteger(setup.drinkCap)?setup.drinkCap:null,drinkBase:(setup.drinks||[]).length};
 
-  // 回数の上限を本体の複数の条件（if:）で共有する書き方はエラー（support.mjs の sharedLimitIfs と同じ。G2 2026-11-05、利用者の決定「見張りだけ」）
   const sharedLimitIfs=x=>x.kind==='effect'&&x.mods?.limit!=null&&(x.body||[]).filter(b=>b.kind==='effect'&&!b.phase&&b.cond).length>=2;
   const SHARED_LIMIT_MSG='回数の上限（limit）を複数の条件（if:）で共有する書き方には対応していません（gakumas-tools では条件ごとに別の回数になります）';
   function validateItems(items,where){
@@ -114,7 +85,6 @@ export function createEngine(data,setup,options={}){
     poolCache=setup.aojiruPool?setup.aojiruPool.slice():[...data.cards.values()].filter(c=>typeof c.key!=='string'&&c.upgraded&&c.rarity==='SSR'&&c.sourceType==='produce'&&(c.plan==='anomaly'||c.plan==='free')).map(c=>c.id);
     if(!poolCache.length)throw Error('青汁の候補がありません');return poolCache;}
 
-  // ---- 読まれる変数（6.）：局面に出うる札・ドリンク・P アイテム・登録された効果の DSL から集める ----
   const reads=new Set();
   function scanReads(items){for(const x of items||[]){
     if(x.kind==='action'){if(x.rhs)scanExpr(x.rhs);for(const a of x.args||[])scanExpr(a);if(x.target)scanExpr(x.target);}
@@ -125,53 +95,41 @@ export function createEngine(data,setup,options={}){
   const scannedCards=new Set();
   function scanCard(card){if(scannedCards.has(card))return;scannedCards.add(card);
     for(const e of card.usable)scanExpr(e);scanReads(card.actions);scanReads(card.effects);
-    // 山札に入れる札（addCardToDeck）
     (function f(items){for(const x of items||[]){if(x.kind==='action'&&x.op==='call'&&x.name==='addCardToDeck'){const id=x.args[0]?.t==='num'?x.args[0].v:Number(x.args[0]?.name);const c=data.cards.get(id);if(c)scanCard(c);}
       else if(x.kind==='effect')f(x.body);}})(card.actions);
     (function f(items){for(const x of items||[]){if(x.kind==='action'&&x.op==='call'&&x.name==='addRandomUpgradedSSRCardToHand')for(const id of aojiruPool())scanCard(data.cards.get(id));else if(x.kind==='effect')f(x.body);}})(card.actions);}
   let readsFrozen=false,heatMono=false,cfpProvisional=false,cfpRead=false;
   const keep=f=>f==='pT'||f==='sT'?reads.has(f)||reads.has('pTsT'):reads.has(f);
 
-  // ---- 札の種類 ----
   const types=[],typeIdx=new Map();
   function typeOf(cardId,g={}){const card=data.cards.get(cardId);if(!card)throw Error('未登録の札: '+cardId);
-    const gs=g.score||0,gt=g.scoreTimes||0,tc=directStaminaCost(card)?g.typedCost||0:0;const k=cardId+'|'+gs+'|'+gt+(tc?'|'+tc:'');   // tc：自分のコスト値-（Talos と同じ）
+    const gs=g.score||0,gt=g.scoreTimes||0,tc=directStaminaCost(card)?g.typedCost||0:0;const k=cardId+'|'+gs+'|'+gt+(tc?'|'+tc:'');
     let i=typeIdx.get(k);if(i===undefined){validateItems(card.actions,card.name);validateItems(card.effects,card.name);
       if(readsFrozen&&!scannedCards.has(card)){const before=reads.size;scanCard(card);if(reads.size!==before)throw Error('局面の読み込み時に調べていない札が現れました: '+card.name);}
       i=types.length;types.push({card,g:{score:gs,scoreTimes:gt,...(tc?{typedCost:tc}:{})},grown:new Map(),sel:undefined,usable:card.usable.map(compileExpr)});typeIdx.set(k,i);}return i;}
   const grownType=(ty,d)=>{const t=types[ty];const k=d.score+'|'+d.scoreTimes+'|'+(d.typedCost||0);let r=t.grown.get(k);if(r===undefined){r=typeOf(t.card.key??t.card.id,{score:t.g.score+(d.score||0),scoreTimes:t.g.scoreTimes+(d.scoreTimes||0),typedCost:(t.g.typedCost||0)+(d.typedCost||0)});t.grown.set(k,r);}return r;};
 
-  // ---- 効果の定義と記録 ----
-  // 夏夜に咲く思い出（584・585）が登録する効果（at:cardUsed）だけは、札を使ったときの効果の最後（cardUsed → activeCardUsed・mentalCardUsed の後）に発動する（利用者の実ゲームでの確認 2026-11-05：
-  // 揺れ動く想い（P アイテム、cardUsed[active]）で強気になってから夏夜の点が出て、その後に札の効果。gakumas-engine は cardUsed の中で先に発動する）
   const natsuNodes=new Set();for(const c of data.cards.values()){if(!LATE_IDS.has(c.variantOf??c.id))continue;(function w(items){for(const x of items||[])if(x.kind==='effect'){if(x.phase==='cardUsed')natsuNodes.add(x);w(x.body);}})(c.actions);}
   const defs=[],defIdx=new Map();
   function defOf(node){let i=defIdx.get(node);if(i!==undefined)return i;i=defs.length;const slots=[];
     (function walk(n){if(n.kind!=='effect')return;if(n.mods?.limit!=null){n._slot=slots.length;slots.push(n.mods.limit);}for(const b of n.body||[])if(b.kind==='effect'&&!b.phase)walk(b);})(node);
     const f=node.filter;const ephase=f&&f.t==='id'&&(f.name==='active'||f.name==='mental')&&(node.phase==='cardUsed'||node.phase==='afterCardUsed')?(node.phase==='cardUsed'?f.name+'CardUsed':'after'+(f.name==='active'?'Active':'Mental')+'CardUsed'):node.phase;defs.push({node,slots,phase:node.phase,ephase,natsu:natsuNodes.has(node)});defIdx.set(node,i);validateItems([node],'効果');prepNode(node);return i;}
   const rec=(d,src=-1)=>({d,l:defs[d].slots.slice(),c:0,src});
-  // コスト0の消費は先に使った札の効果から（Talos と同じ。setup.nullifyCostCardsCarriedFirst、2026-11-05）
   const carriedGate=n=>setup.nullifyCostCardsCarriedFirst&&JSON.stringify(n,(k,v)=>k.startsWith('_')?undefined:v).includes('nullifyCostCards')?{...n,carriedGate:true}:n;
   const recKey=r=>r.d+':'+r.l.join('.')+':'+r.c+':'+r.src;
-  // 札の effects 列の記録の順（発動の順）。Talos と同じく「定義・残り回数・カウンタ・持ち主」の文字列の順。持ち主は、局面の読み込み時に
-  // できた種類なら番号（Talos と同じ）、途中の成長でできた種類なら中身（番号はエンジンごとに違うので、並列でも同じ順になるように）
   let T0=Infinity;const srcTok=ty=>ty<T0?String(ty):'~'+typeDesc(ty);
   const sortKey=r=>r.d+':'+r.l.join('.')+':'+r.c+':'+srcTok(r.src);
   const cmpRec=(a,b)=>{const x=sortKey(a),y=sortKey(b);return x<y?-1:x>y?1:0;};
   const typeDesc=ty=>{const t=types[ty];return (t.card.key??t.card.id)+'|'+t.g.score+'|'+t.g.scoreTimes+(t.g.typedCost?'|'+t.g.typedCost:'');};
-  // 記録の並びの表（番号 → 並び）。並びは変えない（書き換えるときは新しい並びを作って番号を取る）
   const effTab=[],effIdx=new Map();
   function effId(list){let k='';for(const r of list)k+=recKey(r)+';';let id=effIdx.get(k);if(id===undefined){id=effTab.length;effTab.push(Object.freeze(list));effIdx.set(k,id);}return id;}
   const EMPTY=effId([]);
-  const effEnd=new Map();   // 並びの番号 → ターン終了時の効果を持つか
+  const effEnd=new Map();
   const hasEnd=id=>{let v=effEnd.get(id);if(v===undefined){v=effTab[id].some(r=>defs[r.d].phase==='endOfTurn');effEnd.set(id,v);}return v;};
 
-  // ---- 山札の信念 ----
-  // 候補：{w:[分子,分母], bag:多重集合, segs:[[★の数, 決まった札の多重集合], …]}。信念：{cands, size, key, content, draw, ins}
   const beliefs=[],beliefIdx=new Map();
   const segKey=g=>C(33+g[0])+g[1];
   const candKey=c=>{let k=c.bag+'\x02';for(let i=0;i<c.segs.length;i++)k+=(i?'\x03':'')+segKey(c.segs[i]);return k;};
-  // 候補を正規化：袋の札が1種類なら★をその札にする、空の区間を除く、隣り合う「★だけ」の区間と「同じ1種類の札だけ」の区間をつなぐ
   function canonCand(w,bag,segs){
     if(bag.length&&bag.charCodeAt(0)===bag.charCodeAt(bag.length-1)){const ty=bag.charCodeAt(0)-BASE;
       segs=segs.map(([s,f])=>{if(!s)return [0,f];let z=f;for(let i=0;i<s;i++)z=msAdd(z,ty);return [0,z];});bag='';}
@@ -185,7 +143,7 @@ export function createEngine(data,setup,options={}){
       out.push(g);}
     return {w,bag,segs:out};
   }
-  function beliefOf(parts){   // parts：[{w,bag,segs}]（正規化前）→ 信念の番号
+  function beliefOf(parts){
     const m=new Map();
     for(const x of parts){if(x.w[0]===0)continue;const c=canonCand(x.w,x.bag,x.segs);const k=candKey(c);const o=m.get(k);if(o)o.w=qadd(o.w,c.w);else m.set(k,c);}
     if(!m.size)throw Error('PROBABILITY');
@@ -203,10 +161,9 @@ export function createEngine(data,setup,options={}){
     beliefs.push({cands,size,key,content,draw:null,ins:new Map()});beliefIdx.set(key,id);return id;
   }
   const EMPTY_DECK=beliefOf([{w:ONE,bag:'',segs:[]}]);
-  const starIdx=new Map();   // 捨て札を混ぜた山札（中身の文字列 → 信念の番号）
+  const starIdx=new Map();
   const allStars=z=>{let id=starIdx.get(z);if(id===undefined){id=beliefOf([{w:ONE,bag:z,segs:[[z.length,'']]}]);starIdx.set(z,id);}return id;};
   const repSeg=(segs,j,...rep)=>{const a=segs.slice(0,j);a.push(...rep);for(let i=j+1;i<segs.length;i++)a.push(segs[i]);return a;};
-  // 一番上の1枚を引いた結果：[{ty, p, deck}]（信念ごとに覚える）
   function drawOutcomes(bid){
     const B=beliefs[bid];if(B.draw)return B.draw;
     const obs=new Map();const push=(ty,part)=>{let o=obs.get(ty);if(!o){o=[];obs.set(ty,o);}o.push(part);};
@@ -217,7 +174,6 @@ export function createEngine(data,setup,options={}){
     for(const [ty,parts] of obs){let p=parts[0].w;for(let i=1;i<parts.length;i++)p=qadd(p,parts[i].w);out.push({ty,p,deck:beliefOf(parts)});}
     B.draw=out;return out;
   }
-  // 上から n 枚を引いた結果（引いた札の多重集合と、残りの山札）：[{drawn, p, deck}]（信念ごとに覚える）
   function drawMany(bid,n){
     const B=beliefs[bid];if(!B.many)B.many=new Map();let r=B.many.get(n);if(r)return r;
     let cur=[{drawn:'',p:ONE,deck:bid}];
@@ -226,7 +182,6 @@ export function createEngine(data,setup,options={}){
       cur=[...m.values()];}
     B.many.set(n,cur);return cur;
   }
-  // 1枚を山札に入れる（#2：n 枚なら、一番上から n 番目の前までの n 通り。一番下には入らない。空なら1枚だけ）
   function insertB(bid,ty){
     const B=beliefs[bid];let r=B.ins.get(ty);if(r!==undefined)return r;
     const X=C(BASE+ty),n=B.size,parts=[];
@@ -238,11 +193,9 @@ export function createEngine(data,setup,options={}){
     }
     r=beliefOf(parts);B.ins.set(ty,r);return r;
   }
-  // 札の種類を置き換えた信念（成長）
   function mapBelief(bid,fn){const B=beliefs[bid];
     return beliefOf(B.cands.map(c=>({w:c.w,bag:msOf(msIds(c.bag).map(fn)),segs:c.segs.map(([s,f])=>[s,msOf(msIds(f).map(fn))])})));}
 
-  // ---- 式（読み込み時に関数へ） ----
   function compileExpr(e){
     switch(e.t){
       case 'num':{const v=e.v;return ()=>v;}
@@ -279,10 +232,8 @@ export function createEngine(data,setup,options={}){
     }
     throw Error('未対応の変数: '+n);
   }
-  // 変換した関数と判定の覚えは、エンジンごとに持つ（札の種類の番号はエンジンごとに違う。DSL の木はエンジンの間で共有される）
   const FN=new WeakMap(),TF=new WeakMap();
   const exprFn=e=>{let f=FN.get(e);if(!f){f=compileExpr(e);FN.set(e,f);}return f;};
-  // 札の対象の判定（種類と場所ごとに覚える）
   function targetFn(e){
     const hit=TF.get(e);if(hit)return hit;
     const cache=[[],[],[],[],[],[],[]];
@@ -311,7 +262,6 @@ export function createEngine(data,setup,options={}){
     for(let i=0;i<s.held.length;i++)fn(s.held.charCodeAt(i)-BASE,'held',1);
     msRuns(beliefs[s.deck].content,(ty,n)=>fn(ty,'deck',n));
   }
-  // 項目の並びが「判定用の状態」を読むか（読むなら、書き換える前に複製しておく）
   function needsSnap(items){
     if(items._ns!==undefined)return items._ns;let v=false;
     for(const x of items){
@@ -322,7 +272,6 @@ export function createEngine(data,setup,options={}){
   }
   function prepNode(n){if(n.cond)exprFn(n.cond);if(n.filter)targetFn(n.filter);}
 
-  // ---- キー ----
   const ch=v=>Number.isInteger(v)&&v>=-1&&v<60000?C(v+33):'\x06'+v+'\x06';
   const sm=v=>v>=-1&&v<60000&&(v|0)===v;
   const K={prev:false,pT:false,sT:false,lT:false,dirT:false,cardsUsed:false,turnUsed:false,nc:false,fp:false};
@@ -336,7 +285,6 @@ export function createEngine(data,setup,options={}){
     return k;
   }
 
-  // ---- 初期状態 ----
   const specOf=x=>typeof x==='number'?{id:x}:x;
   function inTurnEffects(card){return card.effects.filter(e=>e.kind==='effect'&&e.phase&&IN_TURN.has(e.phase));}
   function selfGrowth(e){const d={score:0,scoreTimes:0,typedCost:0};let lim=e.mods?.limit??null;
@@ -358,12 +306,7 @@ export function createEngine(data,setup,options={}){
     if(!limits)return;if(limits.length!==R.l.length)throw Error('残り回数の数が違います（'+where+'）：'+R.l.length+'個');
     R.l=limits.slice();
   }
-  // 発動しない記録（一番外の効果の残り回数が0）。ターン終了時の効果は、合法手（ターン終了）に効くので残す
-  // 既知の制約（DESIGN.md 14章）：同じ種類の札が複数あり、「自分を成長させる効果」（target:this）の記録の状態（残り回数・カウンタ）が
-  // 札どうしで違うと、どの札が成長するかを札の種類だけでは決められない。読み込み時と、遷移の終わりに見つけてエラーで止める
-  // （状態が同じなら、全部が同時に発動して全部成長するので、そのままでよい）。
   const selfGrowDef=d=>{const D=defs[d];if(D.selfGrow===undefined){let f=false;(function w(n){for(const x of n.body||[]){if(x.kind!=='effect'||x.phase)continue;if(x.target?.t==='id'&&x.target.name==='this')f=true;else w(x);}})(D.node);D.selfGrow=f;}return D.selfGrow;};
-  // 記録の並びごとに：自己成長の記録を（定義, 持ち主の種類）で分け、状態が違えばエラー。発動しうる記録の数を覚える（並びは変わらないので1回だけ）
   const ceInfo=new Map();
   function selfGrowthGroups(id){
     let g=ceInfo.get(id);if(g)return g;g=[];const list=effTab[id];const seen=new Map(),cnt=new Map();
@@ -372,8 +315,6 @@ export function createEngine(data,setup,options={}){
       seen.set(k,v);if(!deadRec(r))cnt.set(k,{src:r.src,n:(cnt.get(k)?.n||0)+1});}
     g=[...cnt.values()];ceInfo.set(id,g);return g;
   }
-  // 状態ごとに：発動しうる自己成長の記録の数が、その種類の札の枚数と同じか。違えば、使い切った札（記録は読み込み時に外れる）や、
-  // 途中で増えた同じ種類の札（記録を持たない）と混ざっていて、どの札が持ち主か決まらない（2026-11-03、レビュー R1）
   function checkSelfGrowth(t){
     const gs=selfGrowthGroups(t.ce);if(!gs.length)return;
     for(const {src,n} of gs){let h=0;for(let i=0;i<t.held.length;i++)if(t.held.charCodeAt(i)-BASE===src)h++;
@@ -388,13 +329,10 @@ export function createEngine(data,setup,options={}){
     for(const d of drinks){const dr=data.drinks.get(d);if(!dr)throw Error('未登録のドリンク: '+d);validateItems(dr.actions,dr.name);}
     const effs=[],cardEffs=[];
     for(const x0 of setup.pItems||[]){const x=specOf(x0);const it=data.items.get(x.id);if(!it)throw Error('未登録の P アイテム: '+x.id);
-      // 残り回数（x.limits）は、回数の上限のある効果ごとに順に切り分けて当てる（札と同じ。GUI のセッションの指摘 2026-11-04）
       let li=0;
       for(const e of it.effects){if(e.kind!=='effect'||!e.phase)throw Error('P アイテムの形が未対応: '+it.name);
         if(IN_TURN.has(e.phase)){const R=rec(defOf(e));defs[R.d].early=true;defs[R.d].label??=it.name;R.c=x.counter??0;const n=R.l.length;applyLimits(R,x.limits?x.limits.slice(li,li+n):null,false,it.name);li+=n;effs.push(R);}}
       if(x.limits&&li!==x.limits.length)throw Error('残り回数の数が違います（'+it.name+'）：'+li+'個');}
-    // 名前ごとに共有するアビリティの効果（HIF 再動。2026-11-04）：局面の札にあれば、名前（通常版の番号）ごとに1つ登録する。
-    // 残り回数＝上限 − setup.abilityUses[アビリティ][通常版の番号]（これまでに使った回数、既定0）
     {const seen=new Set();for(const k of ['hand','deck','discard','removed','held'])for(const x of piles[k]){const c=types[x.ty].card;for(const a of c.abilities||[]){
       const iid=sharedAbilityItem(data,a,c.baseId);if(iid===null||seen.has(iid))continue;seen.add(iid);const it=data.items.get(iid);const used=setup.abilityUses?.[a]?.[c.baseId]??0;
       for(const e of it.effects){if(!IN_TURN.has(e.phase))continue;const R=rec(defOf(e));defs[R.d].early=true;defs[R.d].label??=it.name;R.l=R.l.map(v=>Math.max(0,v-used));effs.push(R);}}}}
@@ -406,15 +344,12 @@ export function createEngine(data,setup,options={}){
       for(const e of es){const R=rec(defOf(e),x.ty);const n=R.l.length;applyLimits(R,x.limits?x.limits.slice(li,li+n):null,x.full,card.name);li+=n;if(!deadRec(R))cardEffs.push(R);}
       if(x.limits&&li!==x.limits.length)throw Error('残り回数の数が違います（'+card.name+'）：'+li+'個');}
     T0=types.length;cardEffs.sort(cmpRec);
-    // 読まれる変数：局面の札（と山札に入る札・青汁の候補）、ドリンク、記録された効果
     for(const ty of types.keys())scanCard(types[ty].card);
     for(const d of drinks){const dr=data.drinks.get(d);scanReads(dr.actions);(function f(items){for(const x of items||[]){if(x.kind==='action'&&x.op==='call'){
       if(x.name==='addCardToDeck'){const id=x.args[0]?.t==='num'?x.args[0].v:Number(x.args[0]?.name);const c=data.cards.get(id);if(c)scanCard(c);}
       if(x.name==='addRandomUpgradedSSRCardToHand')for(const id of aojiruPool())scanCard(data.cards.get(id));}else if(x.kind==='effect')f(x.body);}})(dr.actions);}
     for(const r of [...effs,...cardEffs])scanReads([defs[r.d].node]);
     if(options.keepAllFields)for(const f of Object.values(READ_FIELD))reads.add(f);
-    // 全力値（G2 2026-11-05、利用者の依頼）：全力値がコストの札・全力値／累計を読む式・decreaseFullPowerCharge・全力値が増えたときの効果のどれかがあれば数える（fp・cfp・fpb）。
-    // ないときは今までどおり省く（増えるだけで誰も読まない局面の状態を増やさない）。全力の指針への切り替えはターンの始めだけなので、ソリティアの中では起きない
     {const RE=/"t":"id","name":"(fullPowerCharge|cumulativeFullPowerCharge)"|"name":"decreaseFullPowerCharge"|"phase":"fullPowerChargeIncreased"/;
       const js=o=>JSON.stringify(o,(k,v)=>k.startsWith('_')?undefined:v);
       const costFP=c=>(c.cost||[]).some(x=>x.kind==='action'&&x.lhs==='fullPowerCharge');
@@ -424,8 +359,6 @@ export function createEngine(data,setup,options={}){
       if(fp||options.keepAllFields)reads.add('fp');
       cfpRead=fp&&[...scannedCards].some(c=>js([c.actions,c.effects]).includes('cumulativeFullPowerCharge'));cfpProvisional=cfpRead&&setup.cumulativeFullPowerCharge==null;}
     readsFrozen=true;for(const f of Object.keys(K))K[f]=keep(f);
-    // 熱意の単調性（支配に使う。2026-11-04）：熱意を式・条件で読まず、得点の倍率が負にならないなら、
-    // 「熱意だけが多く、ほかは同じ状態」は、同じ手順で必ず同じか多い得点になる（熱意は得点の計算 a=v+熱意×倍率 にしか使われない）
     heatMono=(()=>{let ok=true;const bad=e=>{if(!e||typeof e!=='object')return;if(Array.isArray(e)){for(const x of e)bad(x);return;}
         if(e.t==='id'&&(e.name==='enthusiasm'||e.name==='enthusiasmMultiplier'))ok=false;for(const v of Object.values(e))if(v&&typeof v==='object')bad(v);};
       const items=list=>{for(const x of list||[]){if(x.kind==='action'){if(x.rhs)bad(x.rhs);for(const a of x.args||[])bad(a);if(x.target)bad(x.target);
@@ -444,8 +377,6 @@ export function createEngine(data,setup,options={}){
     checkSelfGrowth(t);t.key=key(t);return t;
   }
 
-  // ---- 山札の操作 ----
-  // 1枚引く（山札が空なら捨て札を混ぜて山札に。それも空なら引かない）。手札が上限なら引かない。s は書き換えてよい状態
   function drawOne(s){
     if(s.hand.length>=cfg.cap)return [{p:ONE,s}];
     if(!beliefs[s.deck].size){if(!s.disc.length)return [{p:ONE,s}];s.deck=allStars(s.disc);s.disc='';}
@@ -455,7 +386,6 @@ export function createEngine(data,setup,options={}){
     for(let i=0;i<outs.length;i++){const o=outs[i];const t=i===outs.length-1?s:clone(s);t.hand=msAdd(t.hand,o.ty);t.deck=o.deck;out[i]={p:o.p,s:t};}
     return out;
   }
-  // 対象に合う札から1枚を一様に選び、元の場所から取り除いて fn(状態, 種類) に渡す。山札の札は、候補・区間ごとに分けて数える。
   function pickRandom(s,target,piles,fn){
     const m=targetFn(target);
     const vis=[];
@@ -488,16 +418,13 @@ export function createEngine(data,setup,options={}){
     return out;
   }
 
-  // ---- 枝の並び ----
-  // 並びの状態は、この遷移の中で作ったもの（書き換えてよい）。fn は状態を書き換えて、枝の並びを返す。
   function each(list,fn){
     if(list.length===1&&isOne(list[0].p))return fn(list[0].s);
     const out=[];
     for(const b of list){const r=fn(b.s);for(const c of r)out.push(isOne(c.p)?{p:b.p,s:c.s}:{p:qmul(b.p,c.p),s:c.s});}
     return out;
   }
-  // 同じ状態（キーが同じ）の枝をまとめる。キーの文字列は作らず、札の場所の文字列で分けてから、ほかの項目を直接比べる
-  const sameRest=(a,b)=>a.score===b.score&&a.deck===b.deck&&   // 得点が違う枝はまとめない（Talos と同じ）
+  const sameRest=(a,b)=>a.score===b.score&&a.deck===b.deck&&
     a.effs===b.effs&&a.ce===b.ce&&a.uses===b.uses&&a.st===b.st&&a.heat===b.heat&&a.extra===b.extra&&a.factor===b.factor&&
     a.bonus===b.bonus&&a.strB===b.strB&&a.done===b.done&&a.sTimes===b.sTimes&&a.usedTy===b.usedTy&&a.em===b.em&&a.drinks===b.drinks&&
     (!K.prev||a.prev===b.prev)&&(!K.pT||a.pT===b.pT)&&(!K.sT||a.sT===b.sT)&&(!K.lT||a.lT===b.lT)&&(!K.dirT||a.dirT===b.dirT)&&(!K.cardsUsed||a.cardsUsed===b.cardsUsed)&&(!K.nc||(a.nc===b.nc&&a.nco===b.nco&&a.cm===b.cm))&&(!K.fp||(a.fp===b.fp&&a.cfp===b.cfp&&a.fpb===b.fpb))&&(!K.turnUsed||a.turnUsed===b.turnUsed);
@@ -510,10 +437,7 @@ export function createEngine(data,setup,options={}){
   function mergeZones(l){if(l.length<2)return l;const m=new Map();for(const c of l){const k=zonesKey(c.s);const o=m.get(k);if(o)o.p=qadd(o.p,c.p);else m.set(k,{p:c.p,s:c.s});}return [...m.values()];}
   const one=s=>[{p:ONE,s}];
 
-  // ---- 熱意・スコア（engine.mjs と同じ計算の順） ----
-  // TRACE（explain のときだけ true）：スコア1発ごとの値・熱意の増分を状態の hits に記録する（書き換えのたびに新しい配列。枝分かれしても混ざらない）
   let TRACE=false;const TRACE_VIA=[];
-  // 内訳の出どころ（explain のときだけ）：src＝札・P アイテム・登録した効果・ドリンクの名前、phase＝'card'（使った札の効果）・'drink'・きっかけ（cardUsed・endOfTurn など）
   const traceInfo=(t,ctx)=>{const o=traceInfo0(t,ctx);if(TRACE_VIA.length)o.via=TRACE_VIA[0];return o;};
   const traceInfo0=(t,ctx)=>{if(!ctx)return {};if(ctx.recField){const r=effTab[t[ctx.recField]]?.[ctx.recIdx];
       const src=ctx.recField==='ce'?(ctx.src>=0?types[ctx.src].card.name:null):(r?defs[r.d]?.label??'登録した効果':null);return {src,phase:ctx.phase};}
@@ -528,7 +452,6 @@ export function createEngine(data,setup,options={}){
     const g=ceilS(b*cfg.trial);t.score+=g;if(TRACE)t.hits=[...(t.hits||[]),{score:g,...traceInfo(t,ctx)}];
   }
 
-  // ---- 指針（#7） ----
   function setStance(list,target,ctx){
     return each(list,t=>{
       const prev=t.st;
@@ -538,43 +461,37 @@ export function createEngine(data,setup,options={}){
       const pctx={used:ctx.used,phase:ctx.phase,parent:ctx.phase,inCard:ctx.inCard,select:ctx.select};
       const change=next!==prev&&!(prev===K1&&next===K2)&&!(prev===STR&&next===STR2);
       if(!change)return next!==prev?trigger(one(t),'stanceValueChanged',pctx):one(t);
-      if((prev===K1||prev===K2||prev===NON)&&next!==NON){t.uses+=1;addEnthusiasm(t,prev===K1?5:prev===K2?8:10,ctx?{...ctx,phase:'stanceChange'}:null);}   // 指針の変更で入る熱意（内訳の phase は stanceChange）
-      // 順は gakumas-engine の BuffManager.setStance と同じ（G2 2026-11-05、外部レビューの指摘）：既定の効果（熱意・行動＋1、上）→ stanceChanged の発動 → 指針の回数＋1 → 直接の変更の回数＋1 → stanceValueChanged。
-      // 前は回数を先に足していたので、stanceChanged の条件で回数を読む効果（エンターテイナーの %3==2 など）が1回早く発動していた
+      if((prev===K1||prev===K2||prev===NON)&&next!==NON){t.uses+=1;addEnthusiasm(t,prev===K1?5:prev===K2?8:10,ctx?{...ctx,phase:'stanceChange'}:null);}
       const cnt=list=>each(list,u=>{if(isPres(next))u.pT++;else if(isStr(next))u.sT++;else if(next===NON)u.lT++;if(ctx.phase==='processCard')u.dirT++;return one(u);});
       return trigger(cnt(trigger(one(t),'stanceChanged',pctx)),'stanceValueChanged',pctx);
     });
   }
 
-  // ---- 発動 ----
-  const PH_CACHE=new Map();   // 並びの番号|きっかけ → 発動しうる記録の位置
+  const PH_CACHE=new Map();
   function phaseIdx(listId,phases,pk){const k=listId+'|'+pk;let v=PH_CACHE.get(k);if(v===undefined){v=[];effTab[listId].forEach((r,i)=>{if(phases.includes(defs[r.d].phase))v.push(i);});PH_CACHE.set(k,v);}return v;}
-  // 条件の判定は、どの効果も「きっかけの直前の状態」で（Talos と同じ。G2 2026-11-05、gakumas-engine との照合で直した）。pre：呼び出し側が渡す判定用の状態
   function trigger(list,phase,ctx,pre=null){
-    // 内訳（explain）のとき：いちばん外側のきっかけ（via）を覚える。ターン終わりの効果の中で札を無料で使った（再演）ときも via は endOfTurn になる
     if(TRACE){TRACE_VIA.push(phase);try{return trigger0(list,phase,ctx,pre);}finally{TRACE_VIA.pop();}}
     return trigger0(list,phase,ctx,pre);}
   function trigger0(list,phase,ctx,pre=null){
-    if(list.length===1&&list[0].s.effs===EMPTY&&list[0].s.ce===EMPTY)return list;   // 記録がなければ何も起きない
+    if(list.length===1&&list[0].s.effs===EMPTY&&list[0].s.ce===EMPTY)return list;
     const phases=[phase];const ty=ctx.used>=0?types[ctx.used].card.type:null;
     if(phase==='cardUsed'&&ty==='active')phases.push('activeCardUsed');if(phase==='cardUsed'&&ty==='mental')phases.push('mentalCardUsed');
     if(phase==='afterCardUsed'&&ty==='active')phases.push('afterActiveCardUsed');if(phase==='afterCardUsed'&&ty==='mental')phases.push('afterMentalCardUsed');
     const pk=phases.join(',');
     return each(list,s=>{
       if(s.effs===EMPTY&&s.ce===EMPTY)return one(s);
-      // 発動の順（Talos と同じ）：きっかけごとに P アイテム（とアビリティ）→ 札の effects 列 → 実行時に登録した効果。夏夜の登録効果だけは最後
       let plan=[];const ord=[];
       for(const i of phaseIdx(s.effs,phases,pk)){const D=defs[effTab[s.effs][i].d];if(filterOk(D.node,ctx))ord.push([0,i,D.natsu?phases.length*3+2:phases.indexOf(D.ephase)*3+(D.early?0:2)]);}
       for(const i of phaseIdx(s.ce,phases,pk)){const D=defs[effTab[s.ce][i].d];if(filterOk(D.node,ctx))ord.push([1,i,D.natsu?phases.length*3+2:phases.indexOf(D.ephase)*3+1]);}
       if(ord.length>1)ord.sort((a,b)=>a[2]-b[2]);for(const [f,i] of ord)plan.push(f,i);
       if(!plan.length)return one(s);
-      const snap=pre??(plan.length>2?clone(s):null);   // 効果が2つ以上なら、直前の状態を写して持つ（状態は書き換えられるため）
-      let cur=one(s);const em0=s.em,st0=s.sTimes;   // 発動した効果の実行中は掛け率1・回数0、終わったら戻す（Talos と同じ）
+      const snap=pre??(plan.length>2?clone(s):null);
+      let cur=one(s);const em0=s.em,st0=s.sTimes;
       for(let j=0;j<plan.length;j+=2){const field=plan[j]?'ce':'effs',i=plan[j+1];
         cur=each(cur,t=>{const r=effTab[t[field]][i];const node=defs[r.d].node;t.em=1;t.sTimes=0;
           return runEffectNode(one(t),node,snap??t,{used:ctx.used,phase,parent:ctx.parent,inCard:false,select:ctx.select,recField:field,recIdx:i,src:r.src});});}
       if(em0!==1||st0!==0)cur=each(cur,t=>{t.em=em0;t.sTimes=st0;return one(t);});else cur=each(cur,t=>{t.em=1;t.sTimes=0;return one(t);});
-      if(plan.includes(1))cur=each(cur,t=>{const a=effTab[t.ce];for(let k=1;k<a.length;k++)if(cmpRec(a[k-1],a[k])>0){t.ce=effId(a.slice().sort(cmpRec));break;}return one(t);});   // 記録の並びを戻す
+      if(plan.includes(1))cur=each(cur,t=>{const a=effTab[t.ce];for(let k=1;k<a.length;k++)if(cmpRec(a[k-1],a[k])>0){t.ce=effId(a.slice().sort(cmpRec));break;}return one(t);});
       return cur;
     });
   }
@@ -583,8 +500,7 @@ export function createEngine(data,setup,options={}){
     return each(list,s=>{
       const r=ctx.recField?effTab[s[ctx.recField]][ctx.recIdx]:null;
       if(node._slot!==undefined&&r&&r.l[node._slot]<1)return one(s);
-      if(node.carriedGate&&snap.nco>0)return one(s);   // Talos と同じ（先に使った全身全霊の分が残る間は、後に使った札のコスト0は使わない）
-      // 札の場所はその時点の状態（Talos と同じ）
+      if(node.carriedGate&&snap.nco>0)return one(s);
       let sz=snap;if(snap!==s&&(node.cond||node._slot!==undefined)&&!(snap.hand===s.hand&&snap.disc===s.disc&&snap.rem===s.rem&&snap.held===s.held&&snap.deck===s.deck)){sz=clone(snap);sz.hand=s.hand;sz.disc=s.disc;sz.rem=s.rem;sz.held=s.held;sz.deck=s.deck;}
       if(node.cond){const sr=ctx.recField?effTab[snap[ctx.recField]][ctx.recIdx]:null;
         if(!exprFn(node.cond)(sz,{used:ctx.used,phase:ctx.phase,parent:ctx.parent,rec:sr}))return one(s);}
@@ -609,21 +525,18 @@ export function createEngine(data,setup,options={}){
     return cur;
   }
 
-  // ---- 行動 ----
   function action(list,a,snap,ctx){
     if(a.op==='call'){
       const arg=i=>a.args[i]===undefined?undefined:a.args[i].t==='id'?a.args[i].name:exprFn(a.args[i])(snap,ctx);
       switch(a.name){
         case 'setStance':return setStance(list,stanceOf(arg(0)),ctx);
         case 'drawCard':{let cur=list;const n=a.args.length?arg(0):1;
-          // 速い経路：枝が1つで、手札に n 枚入り、山札に n 枚以上あれば、n 枚まとめて引いた結果（信念ごとに覚える）を使う
           if(n>1&&cur.length===1){const s0=cur[0].s;if(s0.hand.length+n<=cfg.cap&&beliefs[s0.deck].size>=n){const outs=drawMany(s0.deck,n),p0=cur[0].p;
             return outs.map((o,i)=>{const t=i===outs.length-1?s0:clone(s0);t.hand=msMerge(t.hand,o.drawn);t.deck=o.deck;return {p:qmul(p0,o.p),s:t};});}}
           for(let i=0;i<n;i++){if(cur.length===1)cur=each(cur,drawOne);else cur=merge(each(cur,drawOne));}return cur;}
         case 'exchangeHand':return each(list,t=>{const n=t.hand.length;t.disc=msMerge(t.disc,t.hand);t.hand='';let cur=one(t);for(let i=0;i<n;i++)cur=cur.length===1?each(cur,drawOne):mergeZones(each(cur,drawOne));return cur;});
         case 'addCardToDeck':{const ty=typeOf(arg(0));return each(list,t=>{t.deck=insertB(t.deck,ty);return one(t);});}
-        case 'holdSelected':case 'holdSelectedUpto':return each(list,s=>holdSelected(s,ctx));   // 最大 n 枚（holdSelectedUpto）は、選んだ札（0〜n 枚）を順に保留へ（2026-11-08、本領発揮）
-        // この札を保留へ（2026-11-08、羽ばたけ！・スパート・積み重ね・トレンドリーダー。利用者の決定：保留した札はこのターン中は使えない）：使い終えるとき捨て札・除外の代わりに保留へ
+        case 'holdSelected':case 'holdSelectedUpto':return each(list,s=>holdSelected(s,ctx));
         case 'holdThisCard':return each(list,t=>{if(ctx.inCard&&t.usedTy>=0)t.hThis=1;return one(t);});
         case 'moveRandomToHand':return merge(each(list,s=>s.hand.length>=cfg.cap?one(s):pickRandom(s,a.target,['deck','discard','removed'],(t,ty)=>{t.hand=msAdd(t.hand,ty);return one(t);})));
         case 'removeRandom':return merge(each(list,s=>pickRandom(s,a.target,['deck','discard','hand'],(t,ty)=>{t.rem=msAdd(t.rem,ty);return one(t);})));
@@ -634,7 +547,6 @@ export function createEngine(data,setup,options={}){
         case 'setEnthusiasmBuff':{const v=arg(0);return each(list,t=>{t.factor+=Math.round(v*100);return one(t);});}
         case 'setEnthusiasmBonus':{const v=arg(0);return each(list,t=>{t.extra+=v;return one(t);});}
         case 'setStrengthEffectBuff':{const v=arg(0);return each(list,t=>{t.strB+=Math.round(v*100);return one(t);});}
-        // 全力値（数えるときだけ）：増加の倍率を足す（ターン数はソリティアの中では関係しない）・全力値を減らす（0 未満にしない）
         case 'setFullPowerChargeBuff':{if(!K.fp)return list;const v=arg(0);return each(list,t=>{t.fpb+=Math.round(v*100);return one(t);});}
         case 'decreaseFullPowerCharge':{if(!K.fp)return list;const v=arg(0);return each(list,t=>{t.fp=Math.max(0,t.fp-v);return one(t);});}
       }
@@ -642,20 +554,16 @@ export function createEngine(data,setup,options={}){
       throw Error('未対応の効果: '+a.name);
     }
     const L=a.lhs;
-    // コストを0にする残り回数（nullifyCostCards）：体力が減ったら発動する効果がある局面だけ数える（原点へのチケット。利用者の確認：全身全霊は体力のコストも0。2026-11-04）
-    if(COST_FIELDS.has(L)&&K.nc){const v=exprFn(a.rhs)(snap,ctx);return each(list,t=>{t.cm=applyCostField(t.cm,L,a.op,v);return one(t);});}   // 体力消費の補正（Talos と同じ）
+    if(COST_FIELDS.has(L)&&K.nc){const v=exprFn(a.rhs)(snap,ctx);return each(list,t=>{t.cm=applyCostField(t.cm,L,a.op,v);return one(t);});}
     if(L==='nullifyCostCards'&&K.nc){if(a.op!=='+=')throw Error('nullifyCostCards の '+a.op+' は未対応');const v=exprFn(a.rhs)(snap,ctx);return each(list,t=>{t.nc+=v;return one(t);});}
-    // 全力値（数えるときだけ。gakumas-tools の resolveFullPowerCharge と同じ）：増えるときは札の成長（全力値+）を足し、増加の倍率を掛けて、累計にも足し、
-    // fullPowerChargeIncreased を発動する。減るときはそのまま引く
     if(L==='fullPowerCharge'&&K.fp){const v=exprFn(a.rhs)(snap,ctx);
       return each(list,t=>{let x=v;
         if(a.op==='+='){if(ctx.inCard&&ctx.phase==='processCard'&&t.usedTy>=0)x+=types[t.usedTy].card.startGrowth?.fullPowerCharge??0;
-          if(x>0){x=x*(100+t.fpb)/100;t.cfp+=x;t.fp+=x;return ctx.phase==='processCard'||ctx.phase==='processCost'?trigger(one(t),'fullPowerChargeIncreased',{...ctx,parent:ctx.phase}):one(t);}   // 増えたときの効果は札を使っている間だけ（gakumas-tools の needsChangeTrigger）
+          if(x>0){x=x*(100+t.fpb)/100;t.cfp+=x;t.fp+=x;return ctx.phase==='processCard'||ctx.phase==='processCost'?trigger(one(t),'fullPowerChargeIncreased',{...ctx,parent:ctx.phase}):one(t);}
           t.fp+=x;return one(t);}
         if(a.op==='-='){t.fp-=x;return one(t);}
         throw Error('fullPowerCharge の '+a.op+' は未対応');});}
     if(IGNORED_FIELDS.has(L)||IGNORED_GROWTH.has(L))return list;
-    // 全力値・累計を読む式は、その時点の状態で計算する（gakumas-tools は式をその時点の状態で計算する。ラッシュ「全力値+3、累計分の点」は +3 の後の累計。G2 2026-11-05）
     const cur=K.fp&&readsFP(a.rhs);const v=cur?0:exprFn(a.rhs)(snap,ctx);
     return each(list,t=>{const v2=cur?exprFn(a.rhs)(t,ctx):v;return assign(t,v2);});
     function assign(t,v){
@@ -676,14 +584,12 @@ export function createEngine(data,setup,options={}){
       throw Error('未対応の代入: '+L);
     }
   }
-  // 成長（engine.mjs の growTargets と同じ）
   function growTargets(list,target,body,ctx){
-    // 保留の札だけへの成長（本領発揮の target:held）：保留した札はこのターン中は使えないので省く（2026-11-08、利用者の決定。状態を増やさない）
     if(target?.t==='id'&&target.name==='held')return list;
     const deltas={score:0,scoreTimes:0,typedCost:0};
     for(const x of body){if(x.kind!=='action')throw Error('成長の書き方が未対応');
       if(K.fp&&(x.lhs==='g.fullPowerCharge'||x.lhs==='g.typedCost')&&fpGrowthHits(x.lhs,target,ctx))throw Error('使っている途中の全力値・コストの成長（'+x.lhs+'）は未対応（全力値の札に当たる）');
-      if(x.lhs==='g.typedCost'&&x.op==='+='){deltas.typedCost+=exprFn(x.rhs)(null,ctx);continue;}   // 自分のコスト値-（Talos と同じ）
+      if(x.lhs==='g.typedCost'&&x.op==='+='){deltas.typedCost+=exprFn(x.rhs)(null,ctx);continue;}
       if(IGNORED_GROWTH.has(x.lhs))continue;
       if(x.op!=='+=')throw Error('成長の書き方が未対応: '+x.lhs+x.op);
       if(x.lhs==='g.score')deltas.score+=exprFn(x.rhs)(null,ctx);else if(x.lhs==='g.scoreTimes')deltas.scoreTimes+=exprFn(x.rhs)(null,ctx);else throw Error('未対応の成長: '+x.lhs);}
@@ -694,30 +600,27 @@ export function createEngine(data,setup,options={}){
       if(isThis&&ctx.recField==='ce'){
         const src=effTab[t.ce][ctx.recIdx].src,to=g(src);
         if(!growOne(t,src,to))throw Error('成長させる札が見つかりません');
-        // 並べ替えは発動が全部終わってから（trigger の最後）。途中で並べ替えると、同じ発動の残りの記録の番号がずれ、同じ札を2回成長させていた（G2 2026-11-05、ラッシュ2枚で見つけた）
         const arr=effTab[t.ce].slice();const r=arr[ctx.recIdx];arr[ctx.recIdx]={d:r.d,l:r.l,c:r.c,src:to};t.ce=effId(arr);
         return one(t);
       }
       if(isThis){if(t.usedTy<0)throw Error('this の札がありません');t.usedTy=g(t.usedTy);return one(t);}
-      const pre={hand:t.hand,disc:t.disc,rem:t.rem,held:t.held,deck:t.deck,usedTy:t.usedTy};   // 成長の前の札の場所（記録の持ち主を追うため）
+      const pre={hand:t.hand,disc:t.disc,rem:t.rem,held:t.held,deck:t.deck,usedTy:t.usedTy};
       const mapZ=(z,loc)=>{let hit=false;for(let i=0;i<z.length;i++)if(m(z.charCodeAt(i)-BASE,loc)){hit=true;break;}return hit?msOf(msIds(z).map(ty=>m(ty,loc)?g(ty):ty)):z;};
       t.hand=mapZ(t.hand,'hand');t.disc=mapZ(t.disc,'discard');t.rem=mapZ(t.rem,'removed');
       if(t.held.length)t.held=[...t.held].map(c=>{const ty=c.charCodeAt(0)-BASE;return m(ty,'held')?C(BASE+g(ty)):c;}).join('');
       t.deck=mapBelief(t.deck,ty=>m(ty,'deck')?g(ty):ty);
       if(t.usedTy>=0&&m(t.usedTy,'used'))t.usedTy=g(t.usedTy);
-      // 持ち主の種類の札が、成長の対象の場所に全部あれば成長後の種類へ、1枚もなければそのまま、一部だけならエラー（Talos と同じ。2026-11-03）
       const ce=effTab[t.ce];if(ce.length){const own=new Map();
         const cnt=ty=>{let v=own.get(ty);if(v)return v;let mt=0,all=0;const add=(n,loc)=>{all+=n;if(n&&m(ty,loc))mt+=n;};
           add(msCount(pre.hand,ty),'hand');add(msCount(pre.disc,ty),'discard');add(msCount(pre.rem,ty),'removed');let h=0;for(let i=0;i<pre.held.length;i++)if(pre.held.charCodeAt(i)-BASE===ty)h++;add(h,'held');
           add(msCount(beliefs[pre.deck].content,ty),'deck');add(pre.usedTy===ty?1:0,'used');v=[mt,all];own.set(ty,v);return v;};
-        const dead=r=>{const n=defs[r.d].node;return n._slot!==undefined&&r.l[n._slot]<1&&n.phase!=='endOfTurn';};   // もう発動しない記録は、持ち主が決まらなくてもよい（Talos と同じ。2026-11-05 にそろえた）
+        const dead=r=>{const n=defs[r.d].node;return n._slot!==undefined&&r.l[n._slot]<1&&n.phase!=='endOfTurn';};
         const arr=ce.map(r=>{if(r.src<0)return r;const [mt,all]=cnt(r.src);if(!mt)return r;
           if(mt!==all){if(dead(r))return r;}else return {d:r.d,l:r.l,c:r.c,src:g(r.src)};
           throw Error('TALOS_GROWTH_OWNER_AMBIGUOUS：成長した札「'+types[r.src].card.name+'」の効果の持ち主が決まりません（同じ種類の札の一部だけが成長した）');});arr.sort(cmpRec);t.ce=effId(arr);}
       return one(t);
     });
   }
-  // 種類 from の札1枚を to に（手札・捨て札・除外・保留・使用中・山札の順。山札は袋を先に、なければ上の区間から）
   function growOne(t,from,to){
     if(msCount(t.hand,from)){t.hand=msAdd(msDel(t.hand,from),to);return true;}
     if(msCount(t.disc,from)){t.disc=msAdd(msDel(t.disc,from),to);return true;}
@@ -732,8 +635,8 @@ export function createEngine(data,setup,options={}){
     return ok;
   }
   function holdSelected(s,ctx){
-    const sel=ctx.select;if(!sel){if(ctx.noSelect)return one(s);throw Error('保留する札が選ばれていません');}   // noSelect：選べる札がなかった（何も保留しない）
-    if(sel.multi){let t=s;for(const x of sel.multi)t=holdSelected(t,{...ctx,select:x})[0].s;return one(t);}   // 最大 n 枚：選んだ札を順に（0枚なら何もしない）
+    const sel=ctx.select;if(!sel){if(ctx.noSelect)return one(s);throw Error('保留する札が選ばれていません');}
+    if(sel.multi){let t=s;for(const x of sel.multi)t=holdSelected(t,{...ctx,select:x})[0].s;return one(t);}
     const t=s;
     if(sel.from==='discard')t.disc=msDel(t.disc,sel.ty);
     else if(sel.from==='hand')t.hand=msDel(t.hand,sel.ty);
@@ -756,28 +659,22 @@ export function createEngine(data,setup,options={}){
     msRuns(beliefs[s.deck].content,ty=>{if(m(ty,'deck'))out.push({ty,from:'deck'});});
     return out.sort((a,b)=>a.ty-b.ty||a.from.localeCompare(b.from));
   }
-  // 選択の行動：効果の最初、または条件つきの入れ子（phase・target なし）の最初にあるとき（ノンストップの「if:… { holdSelected[hand] }」。2026-11-04 利用者の決定）。
-  // 入れ子のときは {target, name, cond}（cond は選ぶかどうかの条件。合法手を作るとき、使う前の状態で判定する）
   function findSelect(items,name){const isSel=x=>x.kind==='action'&&x.op==='call'&&/Selected/.test(x.name);const i=items.findIndex(isSel);
     if(i>=0){if(i>0)throw Error('選択の行動が最初にない札は未対応: '+name);if(items[i].name!=='holdSelected'&&items[i].name!=='holdSelectedUpto')throw Error('未対応の選択: '+items[i].name);return items[i];}
     for(const x of items){if(x.kind!=='effect'||x.phase||x.target||!x.cond)continue;const j=(x.body||[]).findIndex(isSel);if(j<0)continue;
       if(j>0)throw Error('選択の行動が最初にない札は未対応: '+name);if(x.body[j].name!=='holdSelected')throw Error('未対応の選択: '+x.body[j].name);return {target:x.body[j].target,name:x.body[j].name,cond:x.cond};}
     return null;}
 
-  // ---- 札を使う ----
   function useCard(list,ty,{free=false,from=null,select=null,noSelect=false}={}){
     const card=types[ty].card;const ctx={used:ty,phase:null,parent:null,inCard:true,select,noSelect};
     let cur=trigger(list,'beforeCardUsed',ctx);
-    // cardUsed の条件は、コストを払う前の状態で判定する（Talos と同じ）。記録（効果）がなければ写さない
     cur=each(cur,t0=>{const pre=t0.effs===EMPTY&&t0.ce===EMPTY?null:clone(t0);
       let c=each(one(t0),t=>{if(from==='hand')t.hand=msDel(t.hand,ty);if(!free)t.uses-=1;t.usedTy=ty;return one(t);});
-      if(!free&&K.fp){const n=fpCost(ty);if(n)c=each(c,t=>{t.fp-=n;return one(t);});}   // 全力値のコストを払う
-      // コストの処理：コストを0にする残りがあれば1回使い（体力も減らない）、なければ stamina-= の札で staminaDecreased
-      if(!free){const dsc=directStaminaCost(card),pc=positiveCost(card);if(K.nc||dsc)c=each(c,t=>{if(K.nc&&pc&&t.nco>0){t.nco--;return one(t);}if(K.nc&&pc&&t.nc>0){t.nc--;return one(t);}return dsc&&(!K.nc||staminaLoss(card,t.st,t.cm,types[ty].g.typedCost||0)>0)?trigger(one(t),'staminaDecreased',{...ctx,parent:'processCost'}):one(t);});}   // 実際に体力が減ったときだけ（Talos と同じ）
+      if(!free&&K.fp){const n=fpCost(ty);if(n)c=each(c,t=>{t.fp-=n;return one(t);});}
+      if(!free){const dsc=directStaminaCost(card),pc=positiveCost(card);if(K.nc||dsc)c=each(c,t=>{if(K.nc&&pc&&t.nco>0){t.nco--;return one(t);}if(K.nc&&pc&&t.nc>0){t.nc--;return one(t);}return dsc&&(!K.nc||staminaLoss(card,t.st,t.cm,types[ty].g.typedCost||0)>0)?trigger(one(t),'staminaDecreased',{...ctx,parent:'processCost'}):one(t);});}
       return trigger(c,'cardUsed',ctx,pre);});
     const pctx={used:ty,phase:'processCard',parent:null,inCard:true,select,noSelect};const ns=needsSnap(card.actions);
     cur=each(cur,t=>{t.em=1;t.sTimes=types[ty].g.scoreTimes;return runItems(one(t),card.actions,ns?clone(t):t,pctx);});
-    // afterCardUsed の条件は、捨て札か除外に置く前の状態で判定する（Talos と同じ）
     cur=each(cur,t=>{const fin=t.usedTy;t.usedTy=-1;t.em=1;t.sTimes=0;
       t.cardsUsed++;t.turnUsed++;const pre=t.effs===EMPTY&&t.ce===EMPTY?null:clone(t);if(t.hThis){t.hThis=0;t.held+=C(BASE+fin);while(t.held.length>2){const old=t.held.charCodeAt(0)-BASE;t.held=t.held.slice(1);t.disc=msAdd(t.disc,old);}}else if(card.once)t.rem=msAdd(t.rem,fin);else t.disc=msAdd(t.disc,fin);return trigger(one(t),'afterCardUsed',ctx,pre);});
     if(!free)cur=each(cur,t=>t.uses<1&&!t.done?endTurn(one(t)):one(t));
@@ -794,14 +691,10 @@ export function createEngine(data,setup,options={}){
     return each(cur,x=>x.uses<1&&!x.done?endTurn(one(x)):one(x));
   }
 
-  // ---- 合法手 ----
   const RFP=new WeakMap();const readsFP=e=>{let v=RFP.get(e);if(v===undefined){v=/"t":"id","name":"(fullPowerCharge|cumulativeFullPowerCharge)"/.test(JSON.stringify(e));RFP.set(e,v);}return v;};
-  // 使っている途中の成長「コスト値-」（g.typedCost）・「全力値+」（g.fullPowerCharge）が、全力値がコストの札・全力値を増やす札に当たるか（当たらなければ今までどおり省く。
-  // 例：エンターテイナーの自分のコスト値-は体力のコストなので関係しない）。当たるときは未対応としてエラー（黙って誤らない）
   const fpRel=(lhs,ty)=>{const c=types[ty].card;return lhs==='g.typedCost'?(c.cost||[]).some(x=>x.kind==='action'&&x.lhs==='fullPowerCharge'):/"lhs":"fullPowerCharge"/.test(JSON.stringify(c.actions));};
   function fpGrowthHits(lhs,target,ctx){if(target.t==='id'&&target.name==='this'){const o=ctx.recField==='ce'?ctx.src:ctx.used;return o!=null&&o>=0&&fpRel(lhs,o);}
     const m=targetFn(target);for(let ty=0;ty<types.length;ty++)if(fpRel(lhs,ty)&&['hand','deck','discard','removed','held','used'].some(l=>m(ty,l)))return true;return false;}
-  // 全力値のコスト（fullPowerCharge-=N）。カスタマイズ「全力値コスト値-」（g.typedCost）で減らす。足りないと使えない（gakumas-tools の isCardUsable と同じ）
   const fpCostMemo=new Map();
   function fpCost(ty){let v=fpCostMemo.get(ty);if(v!==undefined)return v;const card=types[ty].card;v=0;
     for(const x of card.cost||[])if(x.kind==='action'&&x.lhs==='fullPowerCharge'){if(x.op!=='-='||x.rhs?.t!=='num')throw Error('全力値のコストの書き方が未対応（'+card.name+'）');v+=Math.max(0,x.rhs.v-(card.startGrowth?.typedCost??0));}
@@ -814,9 +707,7 @@ export function createEngine(data,setup,options={}){
     const out=[];
     if(s.uses>0){
       msRuns(s.hand,ty=>{if(!usableCard(s,ty))return;if(K.fp&&s.fp<fpCost(ty))return;const c=types[ty].card;const sel=selOf(ty);
-        // 条件つきの選択は、使う前の状態で条件を判定する。手札から選ぶときは、使う札そのもの（1枚）を除く（効果の前に手札から出ている）
         if(sel&&(!sel.cond||exprFn(sel.cond)(s,{used:ty,phase:null,parent:null}))){const opts=selectable({disc:s.disc,hand:msDel(s.hand,ty),deck:s.deck},sel.target);
-          // 最大 n 枚を選んで保留（holdSelectedUpto、本領発揮。2026-11-08）：0〜n 枚の選び方（同じ種類・同じ場所は1通り、枚数が足りれば同じ札を2枚も）をすべて手にする
           if(sel.name==='holdSelectedUpto'){const nMax=sel.args?.[0]?.v??1;if(nMax>2)throw Error('3枚以上を選ぶ保留は未対応: '+c.name);
             const cnt=x=>x.from==='deck'?msCount(beliefs[s.deck].content,x.ty):x.from==='discard'?msCount(s.disc,x.ty):msCount(msDel(s.hand,ty),x.ty);
             out.push({type:'card',ty,id:c.id,name:c.name,noSelect:true});
@@ -828,7 +719,6 @@ export function createEngine(data,setup,options={}){
       const capped=cfg.drinkCap!==null&&cfg.drinkBase-s.drinks.length>=cfg.drinkCap;
       if(!capped){let prev=-1;for(let i=0;i<s.drinks.length;i++){const id=s.drinks.charCodeAt(i)-BASE;if(id===prev)continue;prev=id;const dr=data.drinks.get(id);
         let sel=drinkSel.get(id);if(sel===undefined){sel=findSelect(dr.actions,dr.name);drinkSel.set(id,sel);}
-        // 選べる札がないとき（山札・捨て札が空のほっと緑茶など）も使える：何も保留せず残りの効果だけ（gakumas-engine の holdSelectedByTarget と同じ。項目21、2026-11-06）
         if(sel){const opts=selectable(s,sel.target);if(opts.length)for(const x of opts)out.push({type:'drink',id,name:dr.name,select:x});else out.push({type:'drink',id,name:dr.name,noSelect:true});}
         else out.push({type:'drink',id,name:dr.name});}}
     }
@@ -836,8 +726,6 @@ export function createEngine(data,setup,options={}){
     return out;
   }
 
-  // ---- 遷移 ----
-  // 返り値：{branches:[{p:[分子,分母], s}]}（p>0、合計1、キーの順）。得点の増分は s.score の差。s（入力）は書き換えない。
   function transition(s0,a){
     const s=clone(s0);let cur;
     if(a.type==='card')cur=useCard(one(s),a.ty,{from:'hand',select:a.select||null,noSelect:!!a.noSelect});
@@ -850,15 +738,11 @@ export function createEngine(data,setup,options={}){
     for(const c of cur){const k=key(c.s);const o=m.get(k);if(o)o.p=qadd(o.p,c.p);else{c.s.key=k;m.set(k,{p:c.p,s:c.s});}}
     const out=[...m.values()];
     for(const b of out)if(b.s.hand.length>cfg.cap)throw Error('手札上限を超えました');
-    out.sort((x,y)=>x.s.key<y.s.key?-1:x.s.key>y.s.key?1:x.s.score-y.s.score);   // キーが同じなら得点の順
+    out.sort((x,y)=>x.s.key<y.s.key?-1:x.s.key>y.s.key?1:x.s.score-y.s.score);
     return {branches:out};
   }
   const withScore=(s,x)=>{const t=clone(s);t.score=x;t.key=s.key;return t;};
-  // 表示用（G2 2026-11-06、利用者の要望「1発分のスコア × 回数」。GUI のプレイの案内）：手 a を計算し直し、枝ごとにスコアの内訳を返す。計算の本体の速さには影響しない。
-  // 返り値 {branches:[{p, s, scoreGain, hits:[{v, times}], heatGain, heatHits:[{v, times}]}]}。hits は入った順に、同じ値が続く分をまとめる（例 [{v:1234,times:3}]）。
-  // scoreGain＝hits の合計＝その手の前後の得点の差。heatGain は熱意の増分の合計（指針の変更・札の熱意など。熱意を直接減らす効果は含まない）
   function explain(s0,a){const s=clone(s0);s.hits=undefined;TRACE=true;let r;try{r=transition(s,a);}finally{TRACE=false;}
-    // 同じ値・同じ出どころ（src）・同じきっかけ（phase）が続く分をまとめる。src・phase は 2026-11-08 に足した（利用者の要望：ターン終わりの効果を別の行に）
     const runs=xs=>{const out=[];for(const x of xs){const o=out[out.length-1];if(o&&o.v===x.v&&o.src===x.src&&o.phase===x.phase&&o.via===(x.via??null))o.times++;else out.push({v:x.v,times:1,src:x.src??null,phase:x.phase??null,via:x.via??null});}return out;};
     return {branches:r.branches.map(b=>{const h=b.s.hits||[];b.s.hits=undefined;const sc=h.filter(x=>x.score!==undefined).map(x=>({v:x.score,src:x.src,phase:x.phase,via:x.via})),ht=h.filter(x=>x.heat!==undefined).map(x=>({v:x.heat,src:x.src,phase:x.phase,via:x.via}));
       return {p:b.p,s:b.s,scoreGain:b.s.score-s0.score,hits:runs(sc),heatGain:ht.reduce((x,y)=>x+y.v,0),heatHits:runs(ht)};})};}
@@ -866,12 +750,10 @@ export function createEngine(data,setup,options={}){
   const root=initial();
   const name=ty=>types[ty].card.name+(types[ty].g.score||types[ty].g.scoreTimes?'〔成長 '+types[ty].g.score+'/'+types[ty].g.scoreTimes+'〕':'');
   const ms=z=>msIds(z).map(name);
-  // 山札の分布：並びの全体（上から）→ 確率。区間の中の並べ方と、★への袋の割り当てを数え上げる（照合の試験用。limit を超えたら null）
   function deckOrders(s,limit=20000){return beliefOrders(beliefs[s.deck],limit);}
   function beliefOrders(B,limit){
     const out=new Map();let count=0;
     for(const c of B.cands){
-      // 区間ごとの並べ方（★は '*' として）を作り、全体の★の並びに袋の並べ方を割り当てる
       const segPerms=c.segs.map(([s,f])=>distinctPerms([...'*'.repeat(s)].map(()=>-1).concat(msIds(f))));
       const bagPerms=distinctPerms(msIds(c.bag));
       let combos=bagPerms.length;for(const p of segPerms)combos*=p.length;if(combos>limit)return null;
@@ -882,7 +764,6 @@ export function createEngine(data,setup,options={}){
     }
     return out;
   }
-  // ---- 中身で決まるキー（並列用。ワーカーごとに違う番号を使わない）と、そこからの状態の作り直し ----
   let pathOf=null,nodeOfPath=null;
   function buildPaths(){pathOf=new Map();nodeOfPath=new Map();
     const walk=(items,pre)=>items.forEach((x,i)=>{if(x.kind==='effect'||x.kind==='level'){const p=pre+'.'+i;if(x.kind==='effect'&&!pathOf.has(x)){pathOf.set(x,p);nodeOfPath.set(p,x);}walk(x.body||[],p);}});
@@ -893,13 +774,11 @@ export function createEngine(data,setup,options={}){
   const msDesc=z=>msIds(z).map(typeDesc).sort();
   const descTy=x=>{const [k,gs,gt,tc]=x.split('|');return typeOf(/^-?\d+$/.test(k)?Number(k):k,{score:Number(gs),scoreTimes:Number(gt),typedCost:Number(tc||0)});};
   const recCanon=r=>[defPath(r.d),r.l,r.c,r.src<0?null:typeDesc(r.src)];
-  const scal=t=>[t.uses,t.st,t.heat,t.extra,t.factor,t.bonus,t.strB,t.done,t.em,t.sTimes,t.usedTy,K.prev?t.prev:0,K.pT?t.pT:0,K.sT?t.sT:0,K.lT?t.lT:0,K.dirT?t.dirT:0,K.cardsUsed?t.cardsUsed:0,K.turnUsed?t.turnUsed:0,...(K.nc?[t.nc,t.nco]:[0,0]),...(K.fp?[t.fp,t.cfp,t.fpb]:[]),...(t.cm?['c'+t.cm]:[])];   // cm は0でないときだけ末尾に（前の形と同じに読める）
+  const scal=t=>[t.uses,t.st,t.heat,t.extra,t.factor,t.bonus,t.strB,t.done,t.em,t.sTimes,t.usedTy,K.prev?t.prev:0,K.pT?t.pT:0,K.sT?t.sT:0,K.lT?t.lT:0,K.dirT?t.dirT:0,K.cardsUsed?t.cardsUsed:0,K.turnUsed?t.turnUsed:0,...(K.nc?[t.nc,t.nco]:[0,0]),...(K.fp?[t.fp,t.cfp,t.fpb]:[]),...(t.cm?['c'+t.cm]:[])];
   const beliefCanonCache=new Map();
   function beliefCanon(bid){let v=beliefCanonCache.get(bid);if(v!==undefined)return v;
     v=beliefs[bid].cands.map(c=>[JSON.stringify([msDesc(c.bag),c.segs.map(([n,f])=>[n,msDesc(f)])]),c.w]).sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:0).map(([k,w])=>[w[0],w[1],k]);
     beliefCanonCache.set(bid,v);return v;}
-  // 得点を除いた中身の文字列。同じ状態なら、どのエンジン（ワーカー）でも同じ。部品（札の場所・山札・効果の記録）ごとに、中身の文字列を覚える
-  // 形：手札 \x01 捨て札 \x01 除外 \x01 保留 \x01 ドリンク \x01 山札 \x01 効果 \x01 札の効果 \x01 数（それぞれ JSON）
   const zc=new Map(),zcRev=new Map(),dc=new Map(),dcRev=new Map(),ec=new Map(),ecRev=new Map();
   const zoneC=z=>{let v=zc.get(z);if(v===undefined){v=JSON.stringify(msDesc(z));zc.set(z,v);}return v;};
   const heldC=z=>{const k='h'+z;let v=zc.get(k);if(v===undefined){v=JSON.stringify([...z].map(c=>typeDesc(c.charCodeAt(0)-BASE)));zc.set(k,v);}return v;};
@@ -920,11 +799,8 @@ export function createEngine(data,setup,options={}){
     const t=new St({hand:ms(hand),disc:ms(disc),rem:ms(rem),held:hs(held),drinks,
       deck:bid,effs:eid(effs,false),ce:eid(ce,true),uses,st,prev,heat,extra,factor,bonus,strB,pT,sT,lT,dirT,cardsUsed,turnUsed,nc,nco,cm,fp,cfp,fpb,done,em,sTimes,usedTy,score});
     checkSelfGrowth(t);t.key=key(t);return t;}
-  // 合法手の中身で決まる名前（並列のとき、合法手の順をそろえる）
   const canonAct=a=>a.type+':'+(a.type==='card'?typeDesc(a.ty):a.type==='drink'?a.id:'')+(a.select?':'+typeDesc(a.select.ty)+':'+a.select.from:'');
-  // 引き方などの覚えた計算を手放す（メモリ）。同じ入力からは同じ信念の番号・同じ順の枝が作り直されるので、結果は変わらない（2026-11-03）
   function trimCaches(){for(const B of beliefs){B.draw=null;B.many=null;B.hold=null;B.ins=new Map();}PH_CACHE.clear();beliefCanonCache.clear();}
-  // 支配のキー：熱意を除いたキー（heatMono のときだけ。熱意が多いほど良い）
   const domKey=s=>{const h=s.heat;s.heat=0;const k=key(s);s.heat=h;return k;};
   return {root,choices,transition,explain,drinkDef:id=>data.drinks.get(id),key:s=>s.key,types,cfg,defs,withScore,deckOrders,beliefs,canon,fromCanon,canonAct,trimCaches,
     heatMonotone:()=>heatMono,domKey,domVal:s=>s.heat,
@@ -933,14 +809,11 @@ export function createEngine(data,setup,options={}){
       deck:beliefs[s.deck].cands.map(c=>({p:c.w[0]+'/'+c.w[1],bag:ms(c.bag),segs:c.segs.map(([n,f])=>({stars:n,fixed:ms(f)}))})),
       uses:s.uses,stance:STANCES[s.st],prevStance:s.prev===NONE?'none':STANCES[s.prev],enthusiasm:s.heat,extra:s.extra,factor:s.factor,bonus:s.bonus,score:s.score,done:!!s.done,
       drinks:msIds(s.drinks),times:{preservation:s.pT,strength:s.sT,leisure:s.lT,direct:s.dirT},...(K.nc?{...(s.nco?{nullifyCostCards:s.nco+s.nc,nullifyCostCardsCarriedFirst:true}:{nullifyCostCards:s.nc}),...(s.cm?{halfCostTurns:s.cm&CM.hc?1:0,doubleCostTurns:s.cm&CM.dc?1:0,costReduction:CM.crOf(s.cm),costIncrease:CM.ciOf(s.cm)}:{})}:{}),...(K.fp?{fullPowerCharge:s.fp,cumulativeFullPowerCharge:s.cfp,fullPowerChargeBuff:s.fpb/100}:{})}),
-    // GUI の入力欄（G2 2026-11-05）：全力値を数える局面なら「今の全力値」、累計を読む札があれば「累計の全力値」を出す
     inputs:{fullPowerCharge:K.fp,cumulativeFullPowerCharge:cfpRead},
     notes:[...(cfpProvisional?['累計の全力値は入力がないため暫定 '+CFP_PROVISIONAL+' で計算しています（ブースト・ラッシュなど累計を使う札の点は目安）']:[]),
-      // 本領発揮など「最大 n 枚を選んで保留」の札があるとき（2026-11-08、利用者の指示「本領発揮には注意書きを入れて」）
       ...(types.some(t=>/"name":"holdSelectedUpto"/.test(JSON.stringify(t.card.actions)))?['本領発揮：保留する札の選び方（0〜2枚）をすべて試すため、計算が2〜5倍重くなることがあります。保留した札はこのターン中は使えないものとし、その札の成長（回数+1・コスト値−）は数えていません（試作・未検証）']:[])]};
 }
-// 多重集合の異なる並べ方をすべて（-1 は★）
 function distinctPerms(a){const out=[];const cnt=new Map();for(const x of a)cnt.set(x,(cnt.get(x)||0)+1);const keys=[...cnt.keys()].sort((x,y)=>x-y);const cur=[];
   (function f(){if(cur.length===a.length){out.push(cur.slice());return;}for(const k of keys){const n=cnt.get(k);if(!n)continue;cnt.set(k,n-1);cur.push(k);f();cur.pop();cnt.set(k,n);}})();return out;}
 
-export {loadDataFromDir} from './engine.mjs?v=1.17.11';
+export {loadDataFromDir} from './engine.mjs?v=1.17.12';

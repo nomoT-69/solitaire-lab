@@ -1,9 +1,8 @@
-// 5. 設定：比べる順、基準、自然さ、計算の予算、表示、計算の設定（HIF など）、データの版、保存データの書き出し・読み込み
-import {D} from './data.js?v=1.17.11';
-import {S, save, replaceAll, defaultSettings, exportData} from './store.js?v=1.17.11';
-import {h, sel, num, toast} from './ui.js?v=1.17.11';
-import {orderText, critText} from './result.js?v=1.17.11';
-import {copyReport} from './report.js?v=1.17.11';
+import {D} from './data.js?v=1.17.12';
+import {S, save, replaceAll, defaultSettings, exportData} from './store.js?v=1.17.12';
+import {h, sel, num, toast} from './ui.js?v=1.17.12';
+import {orderText, critText} from './result.js?v=1.17.12';
+import {copyReport} from './report.js?v=1.17.12';
 
 const ORDERS = ['dpa', 'dap', 'pda', 'pad', 'adp', 'apd'];
 

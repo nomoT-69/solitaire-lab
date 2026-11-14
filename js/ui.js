@@ -1,11 +1,10 @@
-// 画面の部品（DOM を作る小さな関数、札の絵、浮かぶメニュー、知らせ）
-import {D, has, imgUrl} from './data.js?v=1.17.11';
-import {S} from './store.js?v=1.17.11';
+import {D, has, imgUrl} from './data.js?v=1.17.12';
+import {S} from './store.js?v=1.17.12';
 
 export function h(tag, attrs = {}, ...kids) {
   if (attrs === null || typeof attrs !== 'object' || attrs instanceof Node || Array.isArray(attrs)) { kids.unshift(attrs); attrs = {}; }
   const [t0, ...cls] = tag.split('.');
-  const [t, id] = t0.split('#');   // 'div#名前.クラス' の形も受ける
+  const [t, id] = t0.split('#');
   const el = document.createElement(t || 'div');
   if (id) el.id = id;
   if (cls.length) el.className = cls.join(' ');
@@ -21,7 +20,6 @@ export function h(tag, attrs = {}, ...kids) {
   return el;
 }
 
-// 絵（画像がなければ名前の札）
 export function pic(kind, id, label, size = 56) {
   if (S.settings.images && has(kind, id)) return h('img.pic', {src: imgUrl(kind, id), alt: label, width: size, height: size, loading: 'lazy', draggable: false});
   return h('div.pic.noimg', {style: {width: size + 'px', height: size + 'px'}}, label.slice(0, size < 40 ? 2 : 6));
@@ -30,8 +28,6 @@ export function pic(kind, id, label, size = 56) {
 const TYPE_JA = {active: 'アクティブ', mental: 'メンタル', trouble: 'トラブル'};
 const STANCE_JA = {strength: '強気', preservation: '温存', leisure: 'のんびり'};
 const SIZES = {large: 80, medium: 60, small: 46};
-// 札の絵：entry は {uid, id, c11n, hif}。上辺の色帯＝札が変える指針（強気・温存・のんびり）。HIF・カスタマイズは絵の左下に小さく。
-// marks は札の下に出す印（成長など）。size：large（手札）・medium（デッキ）・small（山札など）
 export function cardTile(entry, {marks = [], draggable = false, onclick, size = 'medium', selected = false, count = 0} = {}) {
   const c = D.cardById.get(entry.id);
   const name = c ? c.name : '不明な札 ' + entry.id;
@@ -50,14 +46,12 @@ export function cardTile(entry, {marks = [], draggable = false, onclick, size = 
   return el;
 }
 
-// 浮かぶメニュー（札を押したとき）。items：[{label, key, onclick, disabled, cls}] または DOM
 let pop = null, popOnClose = null;
-// user＝利用者が閉じた（Esc・外を押した）。そのときだけ onclose を呼ぶ（メニューの中で変えた値を画面に反映する）
 export function closePop(user = false) { const cb = user ? popOnClose : null; popOnClose = null; pop?.remove(); pop = null; document.removeEventListener('keydown', popKey, true); cb?.(); }
 function popKey(e) {
   if (!pop) return;
   if (e.key === 'Escape') { closePop(true); e.preventDefault(); return; }
-  if (e.target.closest?.('input, select')) return;   // 入力中の数字はメニューのキーにしない
+  if (e.target.closest?.('input, select')) return;
   const b = pop.querySelector(`[data-key="${CSS.escape(e.key)}"]`);
   if (b && !b.disabled) { b.click(); e.preventDefault(); }
 }
@@ -91,8 +85,6 @@ export const sel = (label, value, options, onchange) =>
 
 export const fmt = n => n === null || n === undefined ? '—' : Number(n).toLocaleString('ja-JP');
 
-// 入力の欄の横の「？」：触れる（マウスを乗せる・キーで選ぶ）と、何を入れるかが出る
-// 「?」の説明：指を置く・押す・Tab で選ぶと、すぐ近くに出す（ブラウザの title の吹き出しは出るのが遅く、出ないこともあるので使わない。1.13.1、利用者の指摘）
 export const qtip = text => h('span.qtip', {'data-tip': text, tabIndex: 0, 'aria-label': text, role: 'note'}, '?');
 let tipEl = null, tipFor = null;
 function showTip(el) {

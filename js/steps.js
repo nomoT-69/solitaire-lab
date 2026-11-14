@@ -1,18 +1,11 @@
-// 全手順（詳細）：方策の木（引いた札ごとの全部の分かれ）を表にする。見方は2つ：
-//   手順ごと（既定）：引いた札の出方ごとに、最初から終わりまでの1本の手順に分け、起きやすい順に「手順1・2・3…」と切り替えて見る
-//   全部の表：昔のスプレッドシートのように、全部の分かれを1つの表に（分かれはたためる）
-// 列は、見たいものにチェックを入れたものだけ出す（S.ui.stepCols。手順・手はいつも出す）。
-// 列：手順、手、ドロー札、このドローの確率、ここまでの確率、スコア（増えた分 → 累計）、熱意・熱意追加・熱意倍率・スコア上昇（増えた分 → 後の値）、
-//     指針、残り行動、残りのドリンク、この先の達成率。オプションで、継続効果（夏夜など）のカウンタと、その1手で出したスコア（火力）。分かれ（引いた札で手順が分かれるところ）は押すとたためる。CSV に書き出せる。
-import {S, STANCES, save} from './store.js?v=1.17.11';
-import {D} from './data.js?v=1.17.11';
-import {h, fmt} from './ui.js?v=1.17.11';
+import {S, STANCES, save} from './store.js?v=1.17.12';
+import {D} from './data.js?v=1.17.12';
+import {h, fmt} from './ui.js?v=1.17.12';
 
 const ST = Object.fromEntries(STANCES);
 const MAX_ROWS = 3000;
 let collapsed = new Set(), collapsedFor = null;
 
-// 木 → 行（深さ優先）。分かれのない手は、手と結果を1行に
 function flatten(tree) {
   const out = [];
   (function visit(id, depth, step, pathP, anc) {
@@ -29,14 +22,12 @@ function flatten(tree) {
 }
 
 const sign = x => (x > 0 ? '+' : x < 0 ? '−' : '±') + fmt(Math.abs(x));
-// 0 より大きいのに 0.01% 未満の確率は、0% と読めないように有効数字2桁で出す（例 0.0031%）
 const pct = x => { const v = x * 100; if (v > 0 && v < 0.01) return Number(v.toPrecision(2)) + '%'; return (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')) + '%'; };
 const delta = (a, b, f = v => fmt(v)) => b === a ? f(b) : `${sign(b - a)} → ${f(b)}`;
 const factorText = v => '+' + (v - 100) + '%';
-// ターン終わりの効果の点（計算の部品 5e5a733 の hits の via）：最後の手の行から分けて「ターン終わり：…」の行にする（1.17.1、利用者の要望）
 export const eotOf = e => { const hs = (e?.hits || []).filter(x => x.via === 'endOfTurn'); if (!hs.length) return null;
   const total = hs.reduce((t, x) => t + x.v * (x.times || 1), 0);
-  const names = [...new Set([...hs].sort((x, y) => (y.phase === 'card') - (x.phase === 'card')).map(x => (x.src || '効果') + (x.phase === 'card' ? '（再演）' : '')))];   // 再演した札を先に
+  const names = [...new Set([...hs].sort((x, y) => (y.phase === 'card') - (x.phase === 'card')).map(x => (x.src || '効果') + (x.phase === 'card' ? '（再演）' : '')))];
   return {total, label: 'ターン終わり：' + names.join('・')}; };
 const cells = r => {
   if (r.type === 'end') return {step: '', act: r.n.cut ? 'ほかの引き（この先は省略）' : r.n.reached ? `終わり：目標に届いた` : '終わり：目標に届かない', drawn: '', p: '', path: pct(r.pathP),
@@ -49,7 +40,6 @@ const cells = r => {
     bonus: a.bonus === b.bonus ? b.bonus + '%' : `${sign(b.bonus - a.bonus)}% → ${b.bonus}%`,
     stance: a.stance === b.stance ? (ST[b.stance] || b.stance) : `${ST[a.stance] || a.stance} → ${ST[b.stance] || b.stance}`,
     uses: delta(a.uses, b.uses), drinks: delta(a.drinks, b.drinks), future: pct(r.c.p),
-    // 夏夜などのカウンタは、ゲームの表示（5→1、1 のとき次の札で発動）に直して出す（表示＝5 − カウンタ%5）
     regs: (r.e.regs || []).map(g => `${shortName(g.id)} ${5 - g.from % 5}→${g.to == null ? '—' : 5 - g.to % 5}${g.gain ? `（+${fmt(g.gain)}）` : ''}`).join('　')};
 };
 const shortName = id => (D.cardById.get(id)?.name || '継続効果').replace(/に咲く思い出\+?$/, '');
@@ -57,17 +47,15 @@ const REG_COL = ['regs', '継続効果（火力）'];
 const BASE_COLS = [['step', '手順'], ['act', '手'], ['drawn', 'ドロー札'], ['p', 'このドローの確率'], ['path', 'ここまでの確率'], ['score', 'スコア'], ['heat', '熱意'], ['extra', '熱意追加'],
   ['factor', '熱意倍率'], ['bonus', 'スコア上昇'], ['stance', '指針'], ['uses', '残り行動'], ['drinks', 'ドリンク'], ['future', 'この先の達成率']];
 
-// 列の既定（チェックの初期値）。手順・手はいつも出す
 const ALWAYS = ['step', 'act'];
-const DEFAULT_COLS = ['drawn', 'score', 'heat', 'future'];   // ドローの確率の列（このドローの確率・ここまでの確率）は、列の選択で出す
+const DEFAULT_COLS = ['drawn', 'score', 'heat', 'future'];
 const NUM_COLS = ['score', 'heat', 'extra', 'factor', 'bonus', 'uses', 'drinks', 'p', 'path', 'future'];
 
-// 木 → 手順（最初から終わりまでの1本）の一覧。起きやすい順
 function paths(tree) {
   const out = [];
   (function visit(id, acc, p, step) {
     const n = tree.nodes[id];
-    if (n.end && n.cut) return;   // 起きやすい手順に入らなかった引き（worker.js の TOP_PATHS）は、手順の一覧に入れない
+    if (n.end && n.cut) return;
     if (n.end) { out.push({rows: [...acc, {type: 'end', depth: 0, step, pathP: p, anc: [], n}], p, reached: n.reached, cut: !!n.cut, score: n.st?.score ?? n.score}); return; }
     n.edges.forEach((e, i) => {
       const c = tree.nodes[e.next], branching = n.edges.length > 1;
@@ -77,7 +65,6 @@ function paths(tree) {
   return out.map((x, i) => ({...x, order: i})).sort((a, b) => b.p - a.p || a.order - b.order);
 }
 
-// 今のプレイの手順（「使った →」と引いた札でたどった道筋）。その先は起きやすい引きを選んだ続き（future）で最後まで（1.14.2、利用者の要望）
 function playRows(tree, steps) {
   const rows = []; let id = tree.root, p = 1, step = 1, pending = false;
   const move = (n, i, future) => { const e = n.edges[i]; p *= e.p; rows.push({type: 'move', key: id + '-' + i, depth: 0, step: step++, pathP: p, anc: [], n, e, i, c: tree.nodes[e.next], branching: n.edges.length > 1, first: true, future}); id = e.next; };
@@ -145,7 +132,7 @@ export function renderSteps(root, rerender) {
       h('div.pathnav', {}, h('button.on', {}, '今のプレイの手順'), h('button', {onclick: () => { S.ui.stepPlay = false; save(); rerender(); }}, '手順の一覧から選ぶ'),
         h('span.hint', `ここまで ${played} 手（色の薄い行は、この先に起きやすい引きを選んだ場合）`)),
       h('p.pathsum', {class: end?.reached ? 'ok' : 'ng'}, end ? (end.cut ? 'この先は省略（ほかの引き）' : `この続きの終わりのスコア ${fmt(end.st?.score ?? end.score)}・${end.reached ? '目標に届く' : '目標に届かない'}`) : ''),
-      table(pr.map(r => { const t = tr(r); if (r.future) for (const x of [t].flat()) x.classList.add('future'); return t; })));   // ターン終わりの行があると tr は2行（配列）を返す
+      table(pr.map(r => { const t = tr(r); if (r.future) for (const x of [t].flat()) x.classList.add('future'); return t; })));
   } else if (mode === 'path') {
     const ps = paths(R.tree);
     const i = Math.max(0, Math.min(ps.length - 1, S.ui.stepPath || 0)), P = ps[i];
